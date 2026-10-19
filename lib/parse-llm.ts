@@ -6,7 +6,7 @@ import { CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
 import type { Vocabulary } from "./parse-rules.ts";
 import { Query, type Filters } from "./schema.ts";
 
-export const MODEL = "claude-haiku-5-5";
+export const MODEL = process.env.LLM_MODEL || "claude-haiku-5-5"; // override per deploy without a code change
 export const DEADLINE_MS = 4000; // total, including the SDK's retries; the user never waits longer than this
 
 // Not the API's structured outputs: compiling this schema into a grammar fails ("Schema is too complex") after ~40s.
