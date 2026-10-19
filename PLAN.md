@@ -83,9 +83,11 @@ data/
 scripts/
   clean.ts               CSV → deals.json + quality.json (runs before dev and build)
   eval-llm.ts            accuracy, latency and cost check against the real model (costs money)
+  fetch-localities.ts    refreshes data/localities.json from data.gov.il (by hand, ~yearly)
+  hash-password.ts       prints ADMIN_PASSWORD_HASH for a password
 lib/                     all logic; plain TypeScript, no framework code
-  aliases.ts             canonical cities and spellings, property types, conditions, sources (+ precedence),
-                         booleans, neighborhood aliases, places outside the dataset
+  aliases.ts             city aliases built from data/localities.json + nicknames, property types, conditions,
+                         sources (+ precedence), booleans, neighborhood aliases
   clean.ts               CSV parser, normalization, dedupe, outliers, contradictions, report; THRESHOLDS
   schema.ts              zod Query schema: the contract between parsers and engine
   engine.ts              answers a Query from the deals; MIN_N, widening, the 7 question types
@@ -127,7 +129,7 @@ Deterministic: the same CSV always gives the same output. No LLM involved.
 | Field | Rule |
 |---|---|
 | All text | Trim, collapse spaces |
-| City | Alias table (`ת"א`, `Tel Aviv-Yafo`, `תל אביב יפו` → `תל אביב-יפו`). Dashes, case and Hebrew quote marks are normalized before lookup. Unknown city → quarantine |
+| City | Any official locality (`data/localities.json`, CBS), by Hebrew or English name or a nickname (`ת"א`, `Tel Aviv-Yafo`, `קריית שמונה` → canonical). Dashes, case, Hebrew quote marks and קריית/קרית are normalized before lookup. Not a real place → quarantine |
 | Neighborhood | Alias table (`Florentin` → `פלורנטין`); any remaining Latin-script name is flagged |
 | Rooms | `"4 חדרים"` → 4; must be 1–12 in steps of 0.5 |
 | Price | Strip `₪` and commas; missing → quarantine; below ₪100,000 → quarantine |
@@ -177,16 +179,18 @@ One zod schema, used by both parsers, the engine, the LLM prompt (converted to J
 
 Keyword parsing of Hebrew, with no model:
 
-- Cities (aliases, Hebrew prefix letters ב/ל/מ/ו/ה/ש), neighborhoods from the data (ambiguous names need a city), and places outside the dataset → "no data for X".
+- Cities: every 1–4 word run, with up to two prefix letters ב/ל/מ/ו/ה/ש removed, is looked up in the alias map. Covered cities become filters. A real place with no deals → "no data for X", but only for names that aren't everyday words (multi-word names, one-word cities and local councils except אזור/מגדל).
+- Neighborhoods from the data (ambiguous names need a city).
 - Rooms (digits, Hebrew number words, ranges, "at least"), money (מיליון / מיל׳ / אלף / plain numbers ≥100,000, "עד" / "מעל" / "בין … ל…"), size, years, property types, conditions, features (with or without).
 - Intent from keyword lists, in priority order: decline (forecast, advice, not in data) → trend → compare → ranking → budget → price check → statistic → search. Nothing recognized → `null`.
-- `buildVocabulary(deals)` maps each neighborhood to the cities it appears in.
+- `buildVocabulary(deals)` collects the covered cities and maps each neighborhood to the cities it appears in.
 
 ### 6.4 LLM parser (`lib/parse-llm.ts`)
 
 - **Model:** `claude-haiku-5-5`, thinking disabled, effort low, `max_tokens` 1024.
-- **System prompt** (~4,150 tokens, cached with `cache_control`): the query types, filter rules, decline rules, the latest data month (for "last year"), the valid cities, types and conditions, every "neighborhood — city" pair, and the JSON Schema of `Query` (zod `toJSONSchema` with shared references, 4× smaller).
+- **System prompt** (~4,150 tokens, cached with `cache_control`): the query types, filter rules, decline rules, the latest data month (for "last year"), the covered cities, types and conditions, every "neighborhood — city" pair, and the JSON Schema of `Query` (zod `toJSONSchema` with shared references, 4× smaller).
 - **The user message is only the question.** No deal data is ever sent.
+- **Checks after the schema:** an unknown neighborhood fails; a real place with no deals becomes `notInData`.
 - **Deadline:** 4 seconds total (`AbortSignal.timeout`), including the SDK's retries (2, transient errors only).
 - **Validation:** extract the JSON object (code fences tolerated) → `JSON.parse` → `Query.safeParse` → every neighborhood must exist in the data.
 - **Every failure is a result, not an exception:** `timeout`, `connection`, `api-<status>`, `stop-refusal`, `stop-max_tokens`, `invalid-json`, `schema-mismatch`, `unknown-neighborhood:<name>`.
@@ -223,7 +227,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 
 **Admin (`/admin`):**
 
-- **Login:** one shared password (`ADMIN_PASSWORD`), compared in constant time. On success, an `HttpOnly`, `SameSite=Strict` cookie (`Secure` in production), path `/admin`, holding `<expiry>.<HMAC-SHA256(expiry)>` signed with the password. Valid for 8 hours; changing the password logs everyone out; with no password set, nobody can log in.
+- **Login:** one shared password, stored only as `ADMIN_PASSWORD_HASH` (`<salt>:<scrypt hash>`, hex; make it with `npm run hash-password`). The typed password is hashed with the same salt and compared in constant time. On success, an `HttpOnly`, `SameSite=Strict` cookie (`Secure` in production), path `/admin`, holding `<expiry>.<HMAC-SHA256(expiry)>` signed with the hash. Valid for 8 hours; changing the password logs everyone out; with no password set, nobody can log in.
 - **Report (read-only):** summary cards, the quarantine, deals pending review, every flag grouped by reason, possible duplicates, every automatic fix (before → after) grouped by rule, and the thresholds.
 - **Next 16 detail:** pages that read cookies must render inside `<Suspense>` (Cache Components). The report renders only after the cookie check, so the prerendered shell contains no data. Both pages are `noindex`.
 - Links: "ניהול" in the main page's corner; "חזרה לאפליקציה" on the admin pages.
@@ -247,7 +251,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 | `ask.test.ts`         | Input validation without a model call, LLM vs. rules choice, "not understood", the disagreement warning, presets never calling the model                                             |
 | `examples.test.ts`    | Each preset is a valid query and equals what the rule parser produces for its text                                                                                                   |
 | `render.test.ts`      | Hebrew chips, verdict bands, dates, decline messages                                                                                                                                 |
-| `admin-auth.test.ts`  | Password check, session expiry, forged, tampered and foreign cookies                                                                                                                 |
+| `admin-auth.test.ts`  | Password check, salted hash, malformed hash, session expiry, forged, tampered and foreign cookies                                                                                                                |
 
 **Practice used:** when a new test passes on its first run, break the code on purpose once to confirm the test can fail.
 
@@ -288,7 +292,7 @@ npm run build && npm run start # production build locally
 | Variable            | Needed for  | If missing                                        |
 | ------------------- | ----------- | ------------------------------------------------- |
 | `ANTHROPIC_API_KEY` | LLM parsing | Every question falls back to the rule parser      |
-| `ADMIN_PASSWORD`    | `/admin`    | Admin login is disabled, with a message saying so |
+| `ADMIN_PASSWORD_HASH` | `/admin`  | Admin login is disabled, with a message saying so |
 
 Windows note: if a security policy blocks `next-swc.win32-x64-msvc.node`, the warning is harmless; the `--webpack` flag in the scripts makes everything work. Don't run `npm run build` while `npm run start` is serving: the build replaces `.next` under the running server and its pages break until a restart.
 
@@ -308,7 +312,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 **Before going public:**
 
 1. In the **Anthropic Console** ([platform.claude.com](https://platform.claude.com)): set a **monthly spend limit** (Limits). This is the hard cap on cost; if it's reached, the app keeps answering through the rule parser.
-2. Choose a **new, strong admin password** (16+ random characters) for the public site.
+2. Choose a **new, strong admin password** (16+ random characters) for the public site, and run `npm run hash-password` to get its `ADMIN_PASSWORD_HASH` value.
 3. Push the latest commits to GitHub.
 
 **First deploy:**
@@ -316,7 +320,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 1. [vercel.com](https://vercel.com) → **Continue with GitHub** (the account that owns the repo). The Hobby plan is free.
 2. **Add New… → Project** → import the repository. If it's not listed, use "Adjust GitHub App Permissions".
 3. **Project name** = the URL (`<name>.vercel.app`). Framework: Next.js (auto-detected); leave the build settings as they are (`npm run build`).
-4. **Environment Variables:** `ANTHROPIC_API_KEY` and `ADMIN_PASSWORD`. Tick Production (and Preview if you use previews), and mark them **Sensitive**.
+4. **Environment Variables:** `ANTHROPIC_API_KEY` and `ADMIN_PASSWORD_HASH` (the whole `<salt>:<hash>` value, not the password). Tick Production (and Preview if you use previews), and mark them **Sensitive**.
 5. **Deploy.** The build takes ~1–2 minutes.
 6. **Check:** the start page loads; an example answers instantly; a typed question answers in about a second; `/admin` asks for the password and shows the report after login.
 7. Share the **production URL**, not a deployment-specific one. Send the admin password separately, if at all.
@@ -325,7 +329,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 
 - **Every push to `main` deploys automatically** to the same URL. The previous version stays live until the new build succeeds; a failed build never replaces the site.
 - **Rollback:** Deployments → an older deployment → **Promote to Production**.
-- **Changed an environment variable:** Deployments → latest → **Redeploy** (needed for it to take effect). Changing `ADMIN_PASSWORD` logs out all admins.
+- **Changed an environment variable:** Deployments → latest → **Redeploy** (needed for it to take effect). Changing `ADMIN_PASSWORD_HASH` logs out all admins.
 - **Other branches** get their own preview URLs without touching production.
 - **New data:** replace `data/deals.csv`, check `/admin` locally, update `lib/data.test.ts`, commit and push (section 12).
 
@@ -339,7 +343,9 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 
 **New CSV, same columns:**
 
-- New city or new spelling → quarantined as "unknown city" (visible in `/admin`). Add it to `CITIES` or `CITY_ALIASES` in `lib/aliases.ts`. That one edit updates cleaning, the rule parser, the LLM prompt and the schema.
+- New city → picked up automatically if it's an official locality: it's kept, listed in the prompt and answerable.
+- New spelling, or a place CBS doesn't list → quarantined as "unknown city" (visible in `/admin`). Add it to `NICKNAMES` in `lib/aliases.ts`.
+- Update `lib/data.test.ts`: it pins the list of covered cities.
 - New neighborhoods are picked up automatically. Odd spellings go in `NEIGHBORHOOD_ALIASES`.
 - Re-check the outlier thresholds against the new data (`THRESHOLDS`).
 - Update the pinned numbers in `lib/data.test.ts` once the new report looks right.
@@ -401,6 +407,8 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 | —   | Tests for the API logic and the real data                                                    | Done                        | `4a01b29`               |
 | 6   | README, architecture diagram, teaching topic                                                 | To do                       |                         |
 | —   | Optional: LLM-suggested aliases with admin approval                                          | Deferred                    |                         |
+| —   | Admin password stored as a scrypt hash                                                       | Done; not committed yet     |                         |
+| —   | All official localities (CBS); covered cities and "no data" worked out from the data         | Done; not committed yet     |                         |
 
 ### Changes from the original plan
 

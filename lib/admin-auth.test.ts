@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SESSION_SECONDS, createSession, passwordMatches, sessionValid } from "./admin-auth.ts";
+import { SESSION_SECONDS, createSession, hashPassword, passwordMatches, sessionValid } from "./admin-auth.ts";
 
-const SECRET = "test-secret";
+const SECRET = hashPassword("test-secret");
 
 test("password check: exact match only; no password configured means no login", () => {
   assert.equal(passwordMatches("test-secret", SECRET), true);
@@ -10,6 +10,14 @@ test("password check: exact match only; no password configured means no login", 
   assert.equal(passwordMatches("", SECRET), false);
   assert.equal(passwordMatches("anything", undefined), false);
   assert.equal(passwordMatches("", ""), false);
+});
+
+test("the stored value is a salted hash, and a malformed one never matches", () => {
+  assert.doesNotMatch(SECRET, /test-secret/);
+  assert.notEqual(hashPassword("test-secret"), SECRET); // fresh salt each time
+  assert.equal(passwordMatches("test-secret", hashPassword("test-secret")), true);
+  for (const bad of ["test-secret", "abc", ":", `${SECRET.split(":")[0]}:`, `:${SECRET.split(":")[1]}`, `${SECRET}:x`])
+    assert.equal(passwordMatches("test-secret", bad), false);
 });
 
 test("a fresh session is valid, and expires after its lifetime", () => {

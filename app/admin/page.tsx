@@ -109,7 +109,7 @@ export default function AdminPage() {
 }
 
 async function Report() {
-  if (!sessionValid((await cookies()).get(SESSION_COOKIE)?.value, process.env.ADMIN_PASSWORD)) redirect("/admin/login");
+  if (!sessionValid((await cookies()).get(SESSION_COOKIE)?.value, process.env.ADMIN_PASSWORD_HASH)) redirect("/admin/login");
 
   const { counts } = quality;
   const pending = quality.flagged.filter((f) => f.excludeFromStats);

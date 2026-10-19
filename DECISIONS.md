@@ -25,13 +25,22 @@ Short record of what we chose and why. Update when a decision changes.
 - **Medians, not averages.** Below about 5 deals, show the deals but no statistic.
 
 ## Query engine (`lib/engine.ts`)
-- **One `Query` schema** (`lib/schema.ts`, zod) is the contract for both parsers. Cities and enums are closed lists, so a parser can't invent a city.
+- **One `Query` schema** (`lib/schema.ts`, zod) is the contract for both parsers. Cities must be official locality names and the other enums are closed lists, so a parser can't invent a city. Cities are checked with a refinement, not an enum: an enum of 1,300 names would bloat the schema in the LLM prompt.
 - **Unknown never matches:** a deal with unknown parking or condition doesn't match a parking or condition filter.
 - **Widening order** when fewer than 5 usable deals: drop the street, then the neighborhood, then widen rooms by ±0.5. Each step is reported. **Comparison never widens**, because widening one side would make the sides incomparable.
 - **Budget** ("what can I buy for X") looks at deals priced 80–100% of X, grouped by city. Sizes get a median only when a city has 5 or more deals; otherwise only actual min–max ranges are shown.
 - **Price check** compares price per m² when the user gives a size, otherwise the total price, and reports the percentile among comparable deals.
 - **Ranking** shows only groups with 5 or more deals and reports how many groups were left out.
-- **Places outside the dataset** (a fixed list of other Israeli cities) are answered "no data for X", never with a country-wide answer.
+- **Places outside the dataset** are answered "no data for X", never with a country-wide answer. "Outside" is worked out, not listed: any official locality (below) that has no deals in the current CSV.
+
+## Cities: the official list, not the sample's
+- **Every official Israeli locality is known** (`data/localities.json`: the CBS list from data.gov.il, ~1,300 names with English names and whether each is in a regional council). A new CSV with קרית שמונה is kept and answerable with no code change. Only names that aren't real places (typos) are quarantined.
+- **Committed snapshot, refreshed by hand** (`npm run fetch-localities`, about once a year), not fetched during the build: builds stay offline and reproducible, and a data.gov.il outage can't break a deploy. The list is also needed before cleaning runs, which rules out generating it.
+- **Two lists, two jobs.** All localities: recognizing a place (cleaning, both parsers). Covered cities (`vocab.cities`, the cities that have deals, built from `deals.json` like neighborhoods): the LLM prompt, and "do we have data here". The prompt lists only covered cities; the model already knows place names, and code checks them.
+- **Aliases:** official Hebrew names, unambiguous English names (four English names shared by two localities are left out), and a short hand-written `NICKNAMES` list (ת"א, ב"ש, יהוד...). `cityKey` treats קריית/קרית, dashes and spaces as equal. A new spelling in a CSV shows in `/admin` as unknown city; add a nickname.
+- **The keyword parser looks places up instead of scanning for them:** every 1–4 word run of the question, with prefix letters removed, is looked up in the alias map. A few dozen lookups whatever the list size.
+- **It only spots places whose names aren't everyday words:** multi-word names, and one-word cities and local councils except אזור and מגדל. One-word villages (רחוב, רמות, שחר...) are left to the LLM, so "דירות ברחוב הרצל" isn't read as a place. A covered city is always spotted. The LLM parser maps any real place with no deals to "no data".
+- **Not in the CBS list:** places CBS doesn't count as localities (e.g. בית ליד) stay "unknown city" until someone maps them to a locality as a nickname.
 
 ## Model choice
 - **Claude Haiku 5.5** (`claude-haiku-5-5`) for question parsing: the cheapest current Claude model, and parsing needs no reasoning (thinking off, effort low). The system prompt (valid cities, neighborhoods, enums) is prompt-cached.
@@ -87,7 +96,8 @@ Short record of what we chose and why. Update when a decision changes.
 
 ## Admin page
 - **`/admin` shows every data-quality issue, read-only:** quarantined rows, deals pending review, all flags by reason, possible duplicates, every automatic fix (before → after), and the thresholds. No editing: decisions about the data stay in code and config, where they are reviewed and reproducible.
-- **Access: one shared password** (`ADMIN_PASSWORD` environment variable), no user accounts. A successful login sets an `HttpOnly`, `SameSite=Strict` cookie holding an expiry signed with HMAC (8 hours). Changing the password logs everyone out. Without `ADMIN_PASSWORD` set, nobody can log in.
+- **Access: one shared password**, no user accounts. A successful login sets an `HttpOnly`, `SameSite=Strict` cookie holding an expiry signed with HMAC (8 hours). Changing the password logs everyone out. Without `ADMIN_PASSWORD_HASH` set, nobody can log in.
+- **The password is stored only as a salted scrypt hash** (`ADMIN_PASSWORD_HASH`, made by `npm run hash-password`), never in plaintext. Someone who can read the env variables, logs or a leaked `.env.local` doesn't learn a password that may be reused elsewhere. scrypt comes with `node:crypto`, so no dependency. The cookie is signed with the hash string, not a second secret, so there is one value to rotate. Anyone who can read the hash can still forge a cookie, so keep it Sensitive. The variable was renamed from `ADMIN_PASSWORD` so a leftover plaintext value fails closed instead of being misread.
 - **The report renders only after the cookie check**, inside a Suspense boundary (required by Next 16 with Cache Components); the prerendered shell contains no data. The page is marked `noindex`.
 - Shortcut: no limit on login attempts yet; per-IP rate limiting comes with the deploy step.
 

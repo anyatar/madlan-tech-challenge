@@ -1,6 +1,6 @@
 // Keyword parser: Hebrew question → Query, with no LLM. The fallback when the model is slow, down or wrong,
 // and the cross-check when it isn't. Returns null when it recognizes nothing (the UI then shows a filter form).
-import { CITY_ALIASES, OTHER_PLACES, cityKey } from "./aliases.ts";
+import { CITY_ALIASES, SPOTTABLE_PLACES, cityKey } from "./aliases.ts";
 import type { Filters, Query } from "./schema.ts";
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -102,14 +102,38 @@ function dates(text: string): Pick<Filters, "dateFrom" | "dateTo"> {
   return { ...(from && { dateFrom: from[1] }), ...(to && { dateTo: to[1] }) };
 }
 
-export type Vocabulary = { neighborhoods: Map<string, string[]> }; // neighborhood → cities it appears in
+// cities: those with deals. neighborhoods: neighborhood → cities it appears in.
+export type Vocabulary = { cities: Set<string>; neighborhoods: Map<string, string[]> };
 
 export function buildVocabulary(deals: { city: string; neighborhood: string | null }[]): Vocabulary {
   const neighborhoods = new Map<string, string[]>();
   for (const d of deals)
     if (d.neighborhood && !neighborhoods.get(d.neighborhood)?.includes(d.city))
       neighborhoods.set(d.neighborhood, [...(neighborhoods.get(d.neighborhood) ?? []), d.city]);
-  return { neighborhoods };
+  return { cities: new Set(deals.map((d) => d.city)), neighborhoods };
+}
+
+// Places named in the question, in order. Each run of 1–4 words (longest first), with up to two prefix letters
+// (ב, ל, מ, ו, ה, ש) removed, is looked up in the alias map: a few dozen lookups, however many localities there are.
+function places(cityText: string) {
+  const words = cityText.split(/[\s,.?!():;]+/).filter(Boolean);
+  const lookup = (run: string) => {
+    for (let k = 0; k <= /^[ובלמהש]{0,2}/.exec(run)![0].length; k++) {
+      const place = CITY_ALIASES.get(run.slice(k));
+      if (place) return place;
+    }
+  };
+  const found: string[] = [];
+  for (let i = 0; i < words.length; i++)
+    for (let n = Math.min(4, words.length - i); n > 0; n--) {
+      const place = lookup(words.slice(i, i + n).join(" "));
+      if (place) {
+        found.push(place);
+        i += n - 1;
+        break;
+      }
+    }
+  return [...new Set(found)];
 }
 
 export function parseRules(question: string, vocab: Vocabulary): Query | null {
@@ -120,8 +144,10 @@ export function parseRules(question: string, vocab: Vocabulary): Query | null {
   if (hasPhrase(text, ADVICE)) return { type: "unsupported", reason: "advice" };
   if (hasPhrase(text, NOT_IN_DATA)) return { type: "unsupported", reason: "notInData" };
 
-  const cities = [...new Set([...CITY_ALIASES].filter(([alias]) => wordRe(alias).test(cityText)).map(([, c]) => c))];
-  const other = OTHER_PLACES.find((p) => wordRe(p).test(text));
+  const named = places(cityText);
+  const cities = named.filter((c) => vocab.cities.has(c));
+  // A real place with no deals: an explicit "no data", never a country-wide answer.
+  const other = named.find((c) => !vocab.cities.has(c) && SPOTTABLE_PLACES.has(c) && !vocab.neighborhoods.has(c));
   if (other && !cities.length) return { type: "unsupported", reason: "notInData", detail: other };
 
   const neighborhoods: string[] = [];

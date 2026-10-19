@@ -4,7 +4,7 @@ import { EXAMPLES } from "./examples.ts";
 import { parseRules } from "./parse-rules.ts";
 import { Query } from "./schema.ts";
 
-const vocab = { neighborhoods: new Map<string, string[]>() };
+const vocab = { cities: new Set(["חולון", "בת ים", "כפר סבא", "רמת גן", "גבעתיים"]), neighborhoods: new Map<string, string[]>() };
 
 for (const [question, preset] of EXAMPLES)
   test(`preset matches how the question is parsed: ${question}`, () => {

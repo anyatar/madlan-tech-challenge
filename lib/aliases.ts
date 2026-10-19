@@ -1,26 +1,38 @@
 // Canonical values and known spelling variants. Shared by data cleaning and the rule-based question parser.
+import LOCALITIES from "../data/localities.json" with { type: "json" };
 
 const TLV = "תל אביב-יפו";
 const MODIIN = "מודיעין-מכבים-רעות";
 
-export const CITIES = [
-  "אשדוד", "באר שבע", "בית שמש", "בת ים", "גבעתיים", "הרצליה", "חולון", "חיפה", "ירושלים",
-  "כפר סבא", MODIIN, "נתניה", "פתח תקווה", "ראשון לציון", "רחובות", "רמת גן", "רעננה", TLV,
-];
-
+// CBS writes "קרית"; people also write "קריית".
 export const cityKey = (s: string) =>
-  s.trim().toLowerCase().replace(/״/g, '"').replace(/[-–]/g, " ").replace(/\s+/g, " ");
+  s.trim().toLowerCase().replace(/״/g, '"').replace(/קריית/g, "קרית").replace(/[-–]/g, " ").replace(/\s+/g, " ");
 
-export const CITY_ALIASES = new Map<string, string>([
-  ...CITIES.map((c): [string, string] => [cityKey(c), c]),
-  ["תל אביב", TLV], ['ת"א', TLV], ["tel aviv", TLV], ["tel aviv yafo", TLV],
-  ["jerusalem", "ירושלים"],
+// Nicknames and short forms the official list doesn't have.
+export const NICKNAMES: [string, string][] = [
+  ["תל אביב", TLV], ['ת"א', TLV], ["tel aviv", TLV],
   ['ב"ש', "באר שבע"],
   ['כ"ס', "כפר סבא"], ['ר"ג', "רמת גן"], ['פ"ת', "פתח תקווה"], ['ראשל"צ', "ראשון לציון"], ["פתח תקוה", "פתח תקווה"],
-  ["מודיעין", MODIIN],
+  ["מודיעין", MODIIN], ["יהוד", "יהוד-מונוסון"], ["פרדס חנה", "פרדס חנה-כרכור"], ["יקנעם", "יקנעם עילית"],
+  ["בנימינה", "בנימינה-גבעת עדה"],
+];
+
+const english = Map.groupBy(LOCALITIES.filter((l) => l.en), (l) => cityKey(l.en));
+
+// Every spelling we accept → the official name. Built from data/localities.json (refresh: npm run fetch-localities).
+export const CITY_ALIASES = new Map<string, string>([
+  ...[...english].filter(([, ls]) => ls.length === 1).map(([k, [l]]): [string, string] => [k, l.name]), // shared English names left out
+  ...LOCALITIES.map((l): [string, string] => [cityKey(l.name), l.name]),
+  ...NICKNAMES.map(([k, c]): [string, string] => [cityKey(k), c]),
 ]);
 
 export const canonicalCity = (raw: string) => CITY_ALIASES.get(cityKey(raw));
+
+// Places the keyword parser may spot in free text. One-word villages are left out: their names are often plain words
+// (רחוב, רמות, שחר), so "ברחוב הרצל" must not read as a place. So are two towns named like everyday words.
+export const SPOTTABLE_PLACES = new Set(
+  LOCALITIES.filter((l) => /[\s-]/.test(l.name) || (!l.regional && !["אזור", "מגדל"].includes(l.name))).map((l) => l.name),
+);
 
 // Neighborhood spellings found in the data, keyed by the variant.
 export const NEIGHBORHOOD_ALIASES = new Map([["florentin", "פלורנטין"]]);
@@ -32,12 +44,3 @@ export const SOURCES = ["רשות המסים", "מתווך", "בעל נכס"];
 
 export const TRUE_WORDS = ["כן", "yes", "true", "1"];
 export const FALSE_WORDS = ["לא", "no", "false", "0"];
-
-// Places a user may ask about that the dataset doesn't cover: answered with an explicit "no data", never a country-wide answer.
-export const OTHER_PLACES = [
-  "אילת", "עפולה", "טבריה", "נצרת", "הוד השרון", "כפר יונה", "קריית גת", "קריית שמונה", "קריית אתא", "קריית ביאליק",
-  "קריית מוצקין", "קריית ים", "קריית אונו", "קריית מלאכי", "אשקלון", "נהריה", "עכו", "כרמיאל", "צפת", "דימונה", "ערד",
-  "אופקים", "שדרות", "נתיבות", "יבנה", "נס ציונה", "לוד", "רמלה", "ראש העין", "אור יהודה", "יהוד", "בני ברק", "אלעד",
-  "ביתר עילית", "מעלה אדומים", "אריאל", "זכרון יעקב", "חדרה", "קיסריה", "פרדס חנה", "טירת כרמל", "נשר", "יקנעם",
-  "מגדל העמק", "בית שאן", "רהט", "רמת השרון", "גבעת שמואל",
-];

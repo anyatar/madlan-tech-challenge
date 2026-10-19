@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Anthropic from "@anthropic-ai/sdk";
 import { parseLlm } from "./parse-llm.ts";
 
-const vocab = { neighborhoods: new Map([["נאות רחל", ["חולון"]]]) };
+const vocab = { cities: new Set(["חולון"]), neighborhoods: new Map([["נאות רחל", ["חולון"]]]) };
 // A stand-in for client.messages: only create() is used.
 const fake = (create: () => Promise<unknown>) => ({ messages: { create } }) as unknown as Pick<Anthropic, "messages">;
 const replyText = (text: string, stop_reason = "end_turn") => async () => ({ stop_reason, content: [{ type: "text", text }], usage: {} });
@@ -26,12 +26,18 @@ test("rejects a neighborhood the data doesn't have", async () => {
   assert.deepEqual([r.ok, !r.ok && r.error], [false, "unknown-neighborhood:שכונה מומצאת"]);
 });
 
+test("a real place with no deals becomes 'no data'", async () => {
+  const r = await parseLlm("x", "", vocab, fake(reply({ type: "stat", metric: "price", filters: { cities: ["אילת"] } })));
+  assert.ok(r.ok);
+  assert.deepEqual(r.query, { type: "unsupported", reason: "notInData", detail: "אילת" });
+});
+
 test("refusal, truncation, non-JSON and off-schema replies are failures", async () => {
   for (const [res, error] of [
     [reply({ type: "trend", filters: {} }, "refusal"), "stop-refusal"],
     [reply({ type: "trend", filters: {} }, "max_tokens"), "stop-max_tokens"],
     [replyText("I can't help with that"), "invalid-json"],
-    [reply({ type: "search", filters: { cities: ["אילת"] } }), "schema-mismatch"], // not a city in the data
+    [reply({ type: "search", filters: { cities: ["עיר מומצאת"] } }), "schema-mismatch"], // not a real place
   ] as const) {
     const r = await parseLlm("x", "", vocab, fake(res));
     assert.equal(!r.ok && r.error, error);

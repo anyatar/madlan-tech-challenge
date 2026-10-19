@@ -17,7 +17,7 @@ export default function LoginPage({ searchParams }: PageProps<"/admin/login">) {
 }
 
 async function Login({ searchParams }: Pick<PageProps<"/admin/login">, "searchParams">) {
-  const secret = process.env.ADMIN_PASSWORD;
+  const secret = process.env.ADMIN_PASSWORD_HASH;
   if (sessionValid((await cookies()).get(SESSION_COOKIE)?.value, secret)) redirect("/admin");
   const failed = (await searchParams).error !== undefined;
 
@@ -25,7 +25,7 @@ async function Login({ searchParams }: Pick<PageProps<"/admin/login">, "searchPa
     <main className="admin login">
       <h1>כניסת מנהל</h1>
       {!secret ? (
-        <p className="error">הגישה למנהל לא הוגדרה בשרת (חסר ADMIN_PASSWORD).</p>
+        <p className="error">הגישה למנהל לא הוגדרה בשרת (חסר ADMIN_PASSWORD_HASH).</p>
       ) : (
         <form action={login}>
           <label htmlFor="password">סיסמה</label>

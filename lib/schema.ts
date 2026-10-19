@@ -1,14 +1,17 @@
 // The single contract between question parsers (LLM and rules) and the engine.
 import { z } from "zod";
-import { CITIES, CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
+import { CITY_ALIASES, CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
 
 const oneOf = (values: string[]) => z.enum(values as [string, ...string[]]);
+// Any official locality name, spelled exactly. A check, not an enum: 1,300 names would bloat the schema in the LLM prompt.
+const LOCALITY_NAMES = new Set(CITY_ALIASES.values());
+const locality = z.string().refine((c) => LOCALITY_NAMES.has(c), "not an official locality name");
 const range = z.object({ min: z.number().optional(), max: z.number().optional() }).strict();
 const yearMonth = z.string().regex(/^\d{4}(-\d{2})?$/);
 
 export const Filters = z
   .object({
-    cities: z.array(oneOf(CITIES)).optional(),
+    cities: z.array(locality).optional(),
     neighborhoods: z.array(z.string()).optional(),
     streets: z.array(z.string()).optional(),
     propertyTypes: z.array(oneOf(PROPERTY_TYPES)).optional(),

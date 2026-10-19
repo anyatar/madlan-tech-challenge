@@ -6,7 +6,7 @@ import { SESSION_COOKIE, SESSION_SECONDS, createSession, passwordMatches } from 
 
 // shortcut: no limit on login attempts yet, add per-IP rate limiting with the API's rate limiter at deploy.
 export async function login(formData: FormData) {
-  const secret = process.env.ADMIN_PASSWORD;
+  const secret = process.env.ADMIN_PASSWORD_HASH;
   const given = formData.get("password");
   if (typeof given !== "string" || !secret || !passwordMatches(given, secret)) redirect("/admin/login?error=1");
   (await cookies()).set(SESSION_COOKIE, createSession(secret), {

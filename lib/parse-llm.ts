@@ -2,7 +2,7 @@
 // and its output is schema-validated. Any failure returns { ok: false } and the caller falls back to the rule parser.
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { CITIES, CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
+import { CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
 import type { Vocabulary } from "./parse-rules.ts";
 import { Query, type Filters } from "./schema.ts";
 
@@ -41,7 +41,7 @@ Filter rules:
 - "עם חניה" → hasParking true; "בלי/ללא חניה" → false. Same for מעלית (hasElevator), מרפסת (hasBalcony), ממ"ד (hasSafeRoom).
 - Include only what the question says. Never guess a filter.
 
-Cities: ${CITIES.join(", ")}
+Cities: ${[...vocab.cities].sort().join(", ")}
 Property types: ${PROPERTY_TYPES.join(", ")}
 Conditions: ${CONDITIONS.join(", ")}
 Neighborhoods (neighborhood — city):
@@ -51,13 +51,14 @@ Reply with only the JSON query object, no other text. It must validate against t
 ${SCHEMA}`;
 }
 
-const neighborhoodsIn = (f: Filters) => f.neighborhoods ?? [];
+const allFilters = (q: Query): Filters[] => (q.type === "unsupported" ? [] : [q.filters, ...(q.type === "compare" ? q.groups : [])]);
 
-function unknownNeighborhood(q: Query, vocab: Vocabulary) {
-  if (q.type === "unsupported") return undefined;
-  const all = [q.filters, ...(q.type === "compare" ? q.groups : [])].flatMap(neighborhoodsIn);
-  return all.find((n) => !vocab.neighborhoods.has(n));
-}
+const unknownNeighborhood = (q: Query, vocab: Vocabulary) =>
+  allFilters(q).flatMap((f) => f.neighborhoods ?? []).find((n) => !vocab.neighborhoods.has(n));
+
+// A real place (the schema checked that) with no deals.
+const uncoveredCity = (q: Query, vocab: Vocabulary) =>
+  allFilters(q).flatMap((f) => f.cities ?? []).find((c) => !vocab.cities.has(c));
 
 export type LlmResult =
   | { ok: true; query: Query; ms: number; usage: Anthropic.Usage }
@@ -90,9 +91,10 @@ export async function parseLlm(
     try { parsed = JSON.parse(json); } catch { return fail("invalid-json"); }
     const checked = Query.safeParse(parsed);
     if (!checked.success) return fail("schema-mismatch");
-    const query = checked.data;
-    const unknown = unknownNeighborhood(query, vocab);
+    const unknown = unknownNeighborhood(checked.data, vocab);
     if (unknown) return fail(`unknown-neighborhood:${unknown}`);
+    const uncovered = uncoveredCity(checked.data, vocab);
+    const query: Query = uncovered ? { type: "unsupported", reason: "notInData", detail: uncovered } : checked.data;
     return { ok: true, query, ms: Date.now() - started, usage: res.usage };
   } catch (e) {
     if (e instanceof Anthropic.APIUserAbortError) return fail("timeout");

@@ -13,7 +13,7 @@ const deal = (i: number, city: string): Deal => ({
   source: "רשות המסים", flags: [], excludeFromStats: false,
 });
 const deals = [...Array.from({ length: 6 }, (_, i) => deal(i, "חולון")), ...Array.from({ length: 6 }, (_, i) => deal(i, "בת ים"))];
-const vocab = { neighborhoods: new Map<string, string[]>() };
+const vocab = { cities: new Set(["חולון", "בת ים", "כפר סבא", "רמת גן", "גבעתיים"]), neighborhoods: new Map<string, string[]>() };
 
 const modelSays = (query: Query) => async (): Promise<LlmResult> => ({ ok: true, query, ms: 5, usage: {} as never });
 const modelFails = async (): Promise<LlmResult> => ({ ok: false, error: "timeout", ms: 4000 });

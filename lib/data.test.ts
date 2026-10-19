@@ -3,7 +3,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CITIES } from "./aliases.ts";
 import { clean } from "./clean.ts";
 
 const { deals, report } = clean(readFileSync(new URL("../data/deals.csv", import.meta.url), "utf8"), "2026-10-19");
@@ -28,7 +27,10 @@ test("only the two implausible penthouses are excluded from statistics", () => {
 });
 
 test("every city is canonical, and no neighborhood is left in Latin script", () => {
-  assert.deepEqual([...new Set(deals.map((d) => d.city))].sort(), [...CITIES].sort());
+  assert.deepEqual([...new Set(deals.map((d) => d.city))].sort(), [
+  "אשדוד", "באר שבע", "בית שמש", "בת ים", "גבעתיים", "הרצליה", "חולון", "חיפה", "ירושלים",
+  "כפר סבא", "מודיעין-מכבים-רעות", "נתניה", "פתח תקווה", "ראשון לציון", "רחובות", "רמת גן", "רעננה", "תל אביב-יפו",
+  ].sort());
   assert.deepEqual(deals.filter((d) => /[A-Za-z]/.test(d.neighborhood ?? "")).map((d) => d.neighborhood), []);
 });
 

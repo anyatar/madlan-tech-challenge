@@ -14,6 +14,8 @@
     "build": "next build --webpack",
     "start": "next start",
     "test": "node --test \"lib/*.test.ts\"",
+    "fetch-localities": "node scripts/fetch-localities.ts",
+    "hash-password": "node scripts/hash-password.ts",
     "eval-llm": "node --env-file=.env.local scripts/eval-llm.ts"
   },
   "dependencies": {

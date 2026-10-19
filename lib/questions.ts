@@ -38,6 +38,7 @@ export const CASES: [string, object | null][] = [
   ["כדאי להשקיע בבת ים?", { type: "unsupported", reason: "advice" }],
   ["כמה עולה שכירות בהרצליה?", { type: "unsupported", reason: "notInData" }],
   ["דירות באילת", { type: "unsupported", reason: "notInData", detail: "אילת" }],
+  ["כמה עולה דירה בקריית שמונה?", { type: "unsupported", reason: "notInData", detail: "קרית שמונה" }],
   // nothing recognized → filter form
   ["שלום, מה שלומך?", null],
 ];

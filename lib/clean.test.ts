@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { CITY_ALIASES, NICKNAMES, cityKey } from "./aliases.ts";
 import { clean, parseCsv, parseDate } from "./clean.ts";
 
 const HEADER =
@@ -51,6 +52,24 @@ test("recomputes price per m² instead of trusting the CSV", () => {
   const r = run({ price_per_sqm: "99999" });
   assert.equal(deal(r)?.pricePerSqm, 40000);
   assert.ok(r.report.changes.some((c) => c.id === "D1" && c.rule === "recomputed"));
+});
+
+test("any official locality is kept, in any common spelling; a made-up one is quarantined", () => {
+  const r = run(
+    { deal_id: "K1", city: "קרית שמונה" }, { deal_id: "K2", city: "קריית שמונה" }, { deal_id: "K3", city: "Qiryat Shemona" },
+    { deal_id: "T", city: "תל אביב - יפו" }, { deal_id: "X", city: "חיפא" },
+  );
+  assert.deepEqual(["K1", "K2", "K3", "T"].map((id) => deal(r, id)?.city), ["קרית שמונה", "קרית שמונה", "קרית שמונה", "תל אביב-יפו"]);
+  assert.equal(r.report.quarantine.find((q) => q.id === "X")?.reason, "unknown-city");
+});
+
+test("nicknames point at official names and never hide one", () => {
+  const official = new Set(CITY_ALIASES.values());
+  for (const [nick, city] of NICKNAMES) {
+    assert.ok(official.has(city), city);
+    assert.ok(!official.has(nick) || nick === city, nick);
+    assert.equal(CITY_ALIASES.get(cityKey(nick)), city);
+  }
 });
 
 test("quarantines impossible rows and keeps them in the report", () => {
