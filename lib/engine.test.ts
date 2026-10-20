@@ -17,9 +17,9 @@ const mk = (p: Partial<Deal> = {}): Deal => {
 const many = (k: number, p: Partial<Deal> = {}) => Array.from({ length: k }, (_, i) => mk({ price: 3_000_000 + i * 100_000, ...p }));
 
 test("summarize refuses to compute below MIN_N", () => {
-  assert.equal(summarize([1, 2, 3, 4]), null);
-  assert.deepEqual(summarize([1, 2, 3, 4, 5]), { n: 5, median: 3, p25: 2, p75: 4, min: 1, max: 5 });
-  assert.equal(MIN_N, 5);
+  assert.equal(summarize([100, 200, 300]), null);
+  assert.deepEqual(summarize([100, 200, 300, 400]), { n: 4, median: 250, p25: 175, p75: 325, min: 100, max: 400 });
+  assert.equal(MIN_N, 4);
 });
 
 test("stat excludes flagged deals, counts them, and reports n", () => {

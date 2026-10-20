@@ -41,7 +41,7 @@ REQUEST TIME (POST /api/ask)
                      LLM query if valid, else rule query, else "not understood"
                      (+ warning if the two disagree on a city)
                                                             ▼
-                     engine (lib/engine.ts): filter → median / percentile / group, min 5 deals, widening
+                     engine (lib/engine.ts): filter → median / percentile / group, min 4 deals, widening
                                                             ▼
                      JSON { parsedBy, query, answer } ─► Hebrew UI (app/answer.tsx, lib/render.ts)
 ```
@@ -164,14 +164,14 @@ One zod schema, used by both parsers, the engine, the LLM prompt (converted to J
 ### 6.2 Engine (`lib/engine.ts`)
 
 - **Filtering:** unknown values never match a filter (unknown parking doesn't count as "with parking").
-- **Statistics:** medians and 25th/75th percentiles, never averages. **Fewer than 5 usable deals → no statistic**, only the deals themselves. Flagged deals are excluded and counted ("not including N unusual deals").
-- **Widening** (statistic and price check only), when fewer than 5 deals: drop street → drop neighborhood → rooms ±0.5. Each step is reported to the user. **Comparison never widens.**
+- **Statistics:** medians and 25th/75th percentiles, never averages. **Fewer than 4 usable deals (`MIN_N`) → no statistic**, only the deals themselves. Flagged deals are excluded and counted ("not including N unusual deals").
+- **Widening** (statistic and price check only), when fewer than 4 deals: drop street → drop neighborhood → rooms ±0.5. Each step is reported to the user. **Comparison never widens.**
 - **Per type:**
   - search: up to 50 newest deals, plus the total count
   - stat: median and range
   - priceCheck: percentile among comparable deals (per m² if a size is given)
   - budget: deals at 80–100% of the budget, by city
-  - ranking: median per m², only groups with 5+ deals, plus a count of groups left out
+  - ranking: median per m², only groups with 4+ deals, plus a count of groups left out
   - compare: two sides, each with its own n
   - trend: median per year, with thin years and the partial last year marked
 
@@ -217,7 +217,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 **Each answer (`app/answer.tsx`):**
 
 - **"What I understood" chips:** the question type and each filter in Hebrew. This is how users spot a misreading.
-- **The result:** headline number, range, percentile verdict, tables (budget, trend), ranked list, or side-by-side cards.
+- **The result:** headline number, range, percentile verdict, tables (budget: the 5 cities with the most deals, then "show all"; trend), ranked list, or side-by-side cards.
 - **The basis:** "based on N deals, from date to date".
 - **Notes:** widening, excluded unusual deals, "AI unavailable, parsed by keywords", and the parsers' disagreement warning.
 - **Deals:** expandable rows (native `<details>`) with price per m², floor, year, condition, source and date in two columns (one on phones), the four yes/no features as check / cross / "?" icons with a spoken label, plus warnings for flagged deals. 10 at a time, with "show more".
@@ -245,7 +245,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `clean.test.ts`       | CSV quoting, dates, aliases, booleans, recomputed price per m², quarantine reasons, duplicates and precedence, same-source conflicts, outliers, contradictions, neighborhood aliases |
 | `data.test.ts`        | **Pins the real CSV's results** (530 → 518, which rows are quarantined or excluded, canonical cities, valid fields). Fails on any change to cleaning, by design                      |
-| `engine.test.ts`      | Minimum 5 deals, exclusions, widening, unknown values, percentile, budget band, ranking, comparison without widening, partial years                                                  |
+| `engine.test.ts`      | Minimum 4 deals, exclusions, widening, unknown values, percentile, budget band, ranking, comparison without widening, partial years                                                  |
 | `parse-rules.test.ts` | The 31 shared Hebrew questions (all types, declines, slang)                                                                                                                          |
 | `parse-llm.test.ts`   | A fake model: valid reply, code fences, unknown neighborhood, refusal, truncation, non-JSON, off-schema, timeout, dropped connection, 529                                            |
 | `ask.test.ts`         | Input validation without a model call, LLM vs. rules choice, "not understood", the disagreement warning, presets never calling the model                                             |
@@ -408,7 +408,8 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 | 5d  | Password-protected read-only admin page                                                      | Done                        | `cd08687`, `8ebf7bd`    |
 | 5e  | Precomputed example queries                                                                  | Done                        | `e8cbb78`               |
 | —   | Tests for the API logic and the real data                                                    | Done                        | `4a01b29`               |
-| 6   | README, architecture diagram, teaching topic                                                 | To do                       |                         |
+| 6   | README with architecture and flow diagrams                                                   | Done; not committed yet     |                         |
+| 6b  | Teaching topic for the session                                                               | To do                       |                         |
 | —   | Optional: LLM-suggested aliases with admin approval                                          | Deferred                    |                         |
 | —   | Admin password stored as a scrypt hash                                                       | Done; not committed yet     |                         |
 | —   | All official localities (CBS); covered cities and "no data" worked out from the data         | Done; not committed yet     |                         |

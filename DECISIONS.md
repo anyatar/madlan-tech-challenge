@@ -22,15 +22,16 @@ Short record of what we chose and why. Update when a decision changes.
 - **The LLM turns a Hebrew question into `{type, filters, params}` JSON, and that is its only job.** It gets the question plus the valid values (cities, neighborhoods, enums). It never sees deal rows and never writes the answer.
 - **The engine (plain code) computes every number. The answer is rendered from a Hebrew template.** Nothing the user sees as a fact comes from the model.
 - **Grounding the user can see:** the interpretation shown as chips ("הבנתי: ..."), n and the date span, any widening, excluded or flagged deals, the deals behind every number, and which parser handled the question.
-- **Medians, not averages.** Below about 5 deals, show the deals but no statistic.
+- **Medians, not averages.** Below 4 deals (`MIN_N`), show the deals but no statistic.
+- **`MIN_N` is 4, lowered from 5.** More small groups (a neighborhood, a city in a budget band) get a median instead of "too few deals". The cost: a median of 4 is the average of the two middle deals, so one unusual deal moves it more, and the middle-half range (25th–75th percentile) is interpolated between neighbouring deals. The answer always shows n and the deals behind it, so the reader can judge.
 
 ## Query engine (`lib/engine.ts`)
 - **One `Query` schema** (`lib/schema.ts`, zod) is the contract for both parsers. Cities must be official locality names and the other enums are closed lists, so a parser can't invent a city. Cities are checked with a refinement, not an enum: an enum of 1,300 names would bloat the schema in the LLM prompt.
 - **Unknown never matches:** a deal with unknown parking or condition doesn't match a parking or condition filter.
-- **Widening order** when fewer than 5 usable deals: drop the street, then the neighborhood, then widen rooms by ±0.5. Each step is reported. **Comparison never widens**, because widening one side would make the sides incomparable.
-- **Budget** ("what can I buy for X") looks at deals priced 80–100% of X, grouped by city. Sizes get a median only when a city has 5 or more deals; otherwise only actual min–max ranges are shown.
+- **Widening order** when fewer than 4 usable deals: drop the street, then the neighborhood, then widen rooms by ±0.5. Each step is reported. **Comparison never widens**, because widening one side would make the sides incomparable.
+- **Budget** ("what can I buy for X") looks at deals priced 80–100% of X, grouped by city. Sizes get a median only when a city has 4 or more deals; otherwise only actual min–max ranges are shown.
 - **Price check** compares price per m² when the user gives a size, otherwise the total price, and reports the percentile among comparable deals.
-- **Ranking** shows only groups with 5 or more deals and reports how many groups were left out.
+- **Ranking** shows only groups with 4 or more deals and reports how many groups were left out.
 - **Places outside the dataset** are answered "no data for X", never with a country-wide answer. "Outside" is worked out, not listed: any official locality (below) that has no deals in the current CSV.
 
 ## Cities: the official list, not the sample's
@@ -106,6 +107,9 @@ Short record of what we chose and why. Update when a decision changes.
 - Shortcut: no limit on login attempts yet; per-IP rate limiting comes with the deploy step.
 
 ## Later / cut
+- **Next step for production storage: Postgres for data, Redis for shared state.**
+  - **Postgres replaces the CSV and the in-memory data as the place where deals live and are managed.** Raw deals arrive from Madlan's feed into a raw table; the same cleaning rules (fix / flag / quarantine) write cleaned deals, the cleaning log and the quarantine into their own tables. Managing data then happens in the database, not by editing a file and redeploying: approving or rejecting a flagged deal, correcting a value, adding a city nickname, each kept with who did it and when. The engine stops loading everything into memory: it turns the validated `Query` into a parameterized SQL query (filters on indexed columns such as city, rooms, date, price; medians and percentiles with `percentile_cont`). The `Query` contract stays, so the parsers, the LLM boundary and the UI don't change, and the model still never sees the data. `/admin` reads the same tables instead of `quality.json`. Not now: 518 deals answer in 0.02 ms from memory, data changes are rare, and a database would add a service, a connection per request and migrations for no gain at this size.
+  - **Redis:** the per-IP rate limit, the daily model-call cap, the circuit breaker, and the question → query cache moved from per-instance memory, so all instances share them and they survive deploys. All four are small keys with an expiry read on every request, which is what Redis is for. Not now for the cache: its hit rate is unmeasured (see the query cache above); the guards come first, with step 5c.
 - **Unparseable values:** the LLM suggests alias mappings offline, they pass the same validators, a human approves, and they become deterministic rules. Approval through a token-protected one-page admin UI. **First to cut** if time runs short.
 - Source-precedence admin UI: dropped; precedence stays in config.
 - **Human review of suspected deals:** the queue is already in `quality.json` (`flagged`). A review UI (confirm → back into stats, reject → quarantine) is future work.

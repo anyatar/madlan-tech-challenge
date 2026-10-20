@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { SESSION_COOKIE, sessionValid } from "@/lib/admin-auth.ts";
 import type { Deal, Flag } from "@/lib/clean.ts";
@@ -109,6 +110,7 @@ export default function AdminPage() {
 }
 
 async function Report() {
+  await connection(); // the session check reads the clock, so it must run per request, not at prerender
   if (!sessionValid((await cookies()).get(SESSION_COOKIE)?.value, process.env.ADMIN_PASSWORD_HASH)) redirect("/admin/login");
 
   const { counts } = quality;

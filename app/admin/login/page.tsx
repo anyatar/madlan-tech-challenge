@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { SESSION_COOKIE, sessionValid } from "@/lib/admin-auth.ts";
 import { login } from "../actions.ts";
@@ -17,6 +18,7 @@ export default function LoginPage({ searchParams }: PageProps<"/admin/login">) {
 }
 
 async function Login({ searchParams }: Pick<PageProps<"/admin/login">, "searchParams">) {
+  await connection(); // the session check reads the clock, so it must run per request, not at prerender
   const secret = process.env.ADMIN_PASSWORD_HASH;
   if (sessionValid((await cookies()).get(SESSION_COOKIE)?.value, secret)) redirect("/admin");
   const failed = (await searchParams).error !== undefined;

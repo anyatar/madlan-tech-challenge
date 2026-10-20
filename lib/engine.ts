@@ -2,7 +2,7 @@
 import type { Deal } from "./clean.ts";
 import type { Filters, Query } from "./schema.ts";
 
-export const MIN_N = 5; // below this many deals we show the deals, never a statistic
+export const MIN_N = 4; // below this many deals we show the deals, never a statistic
 const MAX_DEALS = 50; // deals returned for display; n always reports the full count
 const BUDGET_BAND = 0.8; // "what can I buy for X" looks at deals priced between 80% and 100% of X
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Deal } from "@/lib/clean.ts";
-import type { Answer } from "@/lib/engine.ts";
+import { MIN_N, type Answer } from "@/lib/engine.ts";
 import type { Query } from "@/lib/schema.ts";
 import {
   FLAG_LABEL, TYPE_LABEL, WIDENED, describeFilters, formatDate, num, shekel, unsupportedMessage, verdict,
@@ -17,6 +17,7 @@ export type AskResponse = {
 };
 
 const DEALS_PAGE = 10;
+const BUDGET_ROWS = 5; // cities shown in the budget table before "show all"
 const perSqm = (metric: string) => (metric === "pricePerSqm" ? ' למ"ר' : "");
 const basis = (n: number, span: [string, string] | null) =>
   span ? `על סמך ${num(n)} עסקאות, ${formatDate(span[0])}–${formatDate(span[1])}` : "";
@@ -113,25 +114,13 @@ function Body({ a }: { a: Exclude<Answer, { type: "unsupported" }> }) {
             בטווח {shekel(a.filters.price!.min!)}–{shekel(a.filters.price!.max!)} נסגרו {num(a.n)} עסקאות.{" "}
             {basis(a.n, a.dateSpan)}.
           </p>
-          <table>
-            <thead><tr><th>עיר</th><th>עסקאות</th><th>חדרים</th><th>גודל חציוני</th></tr></thead>
-            <tbody>
-              {a.groups.map((g) => (
-                <tr key={g.key}>
-                  <td>{g.key}</td>
-                  <td>{num(g.n)}</td>
-                  <td>{g.rooms.min === g.rooms.max ? g.rooms.min : `${g.rooms.min}–${g.rooms.max}`}</td>
-                  <td>{g.sizeSqm ? `${num(g.sizeSqm.median)} מ"ר` : "מעט מדי עסקאות"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <BudgetTable groups={a.groups} />
           <Deals deals={a.deals} />
         </>
       );
 
     case "ranking":
-      if (!a.groups.length) return <p>אין מספיק עסקאות כדי לדרג (צריך לפחות 5 עסקאות בכל אזור).</p>;
+      if (!a.groups.length) return <p>אין מספיק עסקאות כדי לדרג (צריך לפחות {MIN_N} עסקאות בכל אזור).</p>;
       return (
         <>
           <p>מחיר חציוני למ"ר, {a.order === "cheapest" ? "מהזול ליקר" : "מהיקר לזול"}. {basis(a.n, a.dateSpan)}.</p>
@@ -143,7 +132,7 @@ function Body({ a }: { a: Exclude<Answer, { type: "unsupported" }> }) {
               </li>
             ))}
           </ol>
-          {a.tooFewDeals > 0 && <p className="note">{num(a.tooFewDeals)} אזורים לא דורגו כי יש בהם פחות מ-5 עסקאות.</p>}
+          {a.tooFewDeals > 0 && <p className="note">{num(a.tooFewDeals)} אזורים לא דורגו כי יש בהם פחות מ-{MIN_N} עסקאות.</p>}
         </>
       );
 
@@ -209,6 +198,33 @@ function TooFew({ n, deals }: { n: number; deals: Deal[] }) {
 }
 
 const yesNo = (v: boolean | null) => (v === null ? "לא ידוע" : v ? "כן" : "לא");
+
+// Cities come sorted by deal count; the rest stay one click away, since the deal list below shows only the newest deals.
+function BudgetTable({ groups }: { groups: Extract<Answer, { type: "budget" }>["groups"] }) {
+  const [all, setAll] = useState(false);
+  return (
+    <>
+      <table>
+        <thead><tr><th>עיר</th><th>עסקאות</th><th>חדרים</th><th>גודל חציוני</th></tr></thead>
+        <tbody>
+          {(all ? groups : groups.slice(0, BUDGET_ROWS)).map((g) => (
+            <tr key={g.key}>
+              <td>{g.key}</td>
+              <td>{num(g.n)}</td>
+              <td>{g.rooms.min === g.rooms.max ? g.rooms.min : `${g.rooms.min}–${g.rooms.max}`}</td>
+              <td>{g.sizeSqm ? `${num(g.sizeSqm.median)} מ"ר` : "מעט מדי עסקאות"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!all && groups.length > BUDGET_ROWS && (
+        <button type="button" className="more" onClick={() => setAll(true)}>
+          הצג את כל הערים ({num(groups.length)})
+        </button>
+      )}
+    </>
+  );
+}
 
 function Deals({ deals }: { deals: Deal[] }) {
   const [shown, setShown] = useState(DEALS_PAGE);
