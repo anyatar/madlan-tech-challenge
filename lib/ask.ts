@@ -7,14 +7,16 @@ import { parseRules, type Vocabulary } from "./parse-rules.ts";
 import type { Query } from "./schema.ts";
 
 export const MAX_QUESTION = 300;
+export const CACHE_MAX = 1000;
 
-export type AskDeps = { deals: Deal[]; vocab: Vocabulary; llm: (question: string) => Promise<LlmResult> };
+// cache: question → the model's query, least recently used first (a Map keeps insertion order).
+export type AskDeps = { deals: Deal[]; vocab: Vocabulary; llm: (question: string) => Promise<LlmResult>; cache?: Map<string, Query> };
 
 // Cities the query names, including both sides of a comparison.
 const cities = (q: Query) =>
   q.type === "unsupported" ? [] : [...new Set([q.filters, ...(q.type === "compare" ? q.groups : [])].flatMap((f) => f.cities ?? []))].sort();
 
-export async function ask(body: unknown, { deals, vocab, llm: parseLlm }: AskDeps) {
+export async function ask(body: unknown, { deals, vocab, llm: parseLlm, cache }: AskDeps) {
   const raw = (body as { question?: unknown } | null)?.question;
   const question = typeof raw === "string" ? raw.trim() : "";
   if (!question || question.length > MAX_QUESTION)
@@ -25,7 +27,10 @@ export async function ask(body: unknown, { deals, vocab, llm: parseLlm }: AskDep
   if (preset) return { status: 200, body: { question, parsedBy: "preset", query: preset, answer: answer(preset, deals) } };
 
   const rules = parseRules(question, vocab);
-  const llm = await parseLlm(question);
+  const key = question.replace(/\s+/g, " ").replace(/[?!.]+$/, "");
+  const hit = cache?.get(key);
+  if (hit) cache!.delete(key); // re-inserted below as the most recently used
+  const llm = hit ? { ok: true as const, query: hit, ms: 0 } : await parseLlm(question);
 
   const query = llm.ok ? llm.query : rules;
   if (!query) return { status: 200, body: { question, parsedBy: null, llm: { ok: false, error: llm.ok ? undefined : llm.error } } };
@@ -33,6 +38,12 @@ export async function ask(body: unknown, { deals, vocab, llm: parseLlm }: AskDep
   // The two parsers disagree on a city the rules saw explicitly: answer with the LLM's reading, offer the other.
   const ruleCities = rules ? cities(rules) : [];
   const alternative = llm.ok && rules && ruleCities.length && ruleCities.join() !== cities(llm.query).join() ? rules : undefined;
+
+  // Only an undisputed model reading is kept: a wrong one would be served to everyone asking the same words.
+  if (cache && llm.ok && !alternative) {
+    cache.set(key, llm.query);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
+  }
 
   return {
     status: 200,
@@ -42,7 +53,7 @@ export async function ask(body: unknown, { deals, vocab, llm: parseLlm }: AskDep
       query,
       alternative,
       answer: answer(query, deals),
-      llm: llm.ok ? { ok: true, ms: llm.ms } : { ok: false, error: llm.error, ms: llm.ms },
+      llm: llm.ok ? { ok: true, ms: llm.ms, ...(hit && { cached: true }) } : { ok: false, error: llm.error, ms: llm.ms },
     },
   };
 }

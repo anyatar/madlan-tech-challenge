@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_QUESTION, ask } from "./ask.ts";
+import { CACHE_MAX, MAX_QUESTION, ask } from "./ask.ts";
 import { EXAMPLES } from "./examples.ts";
 import type { Deal } from "./clean.ts";
 import type { LlmResult } from "./parse-llm.ts";
@@ -68,4 +68,35 @@ test("example questions use their preset query and never call the model", async 
     assert.deepEqual(r.body.query, query);
   }
   assert.equal(called, false);
+});
+
+test("cache: a repeated question reuses the model's query without calling it again", async () => {
+  const cache = new Map<string, Query>();
+  let calls = 0;
+  const q: Query = { type: "stat", filters: { cities: ["חולון"] }, metric: "price" };
+  const llm = async (): Promise<LlmResult> => { calls++; return modelSays(q)(); };
+  await ask({ question: "כמה עולה דירה בחולון?" }, { deals, vocab, llm, cache });
+  const r = await ask({ question: "כמה  עולה דירה בחולון" }, { deals, vocab, llm, cache }); // extra space, no "?"
+  assert.equal(calls, 1);
+  assert.equal(r.body.parsedBy, "llm");
+  assert.deepEqual(r.body.query, q);
+  assert.deepEqual(r.body.llm, { ok: true, ms: 0, cached: true });
+});
+
+test("cache: model failures and disputed readings are not kept", async () => {
+  const cache = new Map<string, Query>();
+  await ask({ question: "כמה עולה דירה בחולון?" }, { deals, vocab, llm: modelFails, cache });
+  await ask({ question: "דירות בחולון" }, { deals, vocab, llm: modelSays({ type: "search", filters: { cities: ["בת ים"] } }), cache });
+  assert.equal(cache.size, 0);
+});
+
+test("cache: keeps at most CACHE_MAX entries, dropping the least recently used", async () => {
+  const cache = new Map<string, Query>();
+  const llm = modelSays({ type: "search", filters: { cities: ["חולון"] } });
+  for (let i = 0; i <= CACHE_MAX; i++) await ask({ question: `דירות בחולון ${i}` }, { deals, vocab, llm, cache });
+  await ask({ question: "דירות בחולון 1" }, { deals, vocab, llm, cache }); // used again: now the newest
+  await ask({ question: "דירות בחולון new" }, { deals, vocab, llm, cache });
+  assert.equal(cache.size, CACHE_MAX);
+  assert.ok(!cache.has("דירות בחולון 0") && !cache.has("דירות בחולון 2"));
+  assert.ok(cache.has("דירות בחולון 1"));
 });

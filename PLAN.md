@@ -66,7 +66,7 @@ REQUEST TIME (POST /api/ask)
 | LLM        | Anthropic SDK `@anthropic-ai/sdk` 0.135, model `claude-haiku-5-5` | Plain JSON reply, validated by zod (not structured outputs)                                                               |
 | Tests      | Node's built-in test runner (`node --test`)                       | No test framework dependency                                                                                              |
 | Font       | Heebo via `next/font/google`                                      | Hebrew + Latin subsets                                                                                                    |
-| Storage    | **None**                                                          | Data is bundled at build. Redis (Upstash) is planned for the rate limit and cache                                         |
+| Storage    | **None**                                                          | Data is bundled at build. The query cache is in memory. Redis (Upstash) is planned for the rate limit                     |
 | Hosting    | Vercel (Hobby, free)                                              | See section 10                                                                                                            |
 
 Runtime dependencies are only `next`, `react`, `react-dom`, `zod` and `@anthropic-ai/sdk`. The CSV parser is ~20 lines of our own.
@@ -335,7 +335,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 
 **How long it stays live:** indefinitely, until the project is deleted. To take it down: Project → Settings → Delete Project, or remove `ANTHROPIC_API_KEY` to stop spending.
 
-**Not yet on Vercel (planned, step 5c):** per-IP rate limit, daily request cap, login-attempt limit, circuit breaker, question → query cache (Upstash Redis), and a CI workflow running `npm test` on every push.
+**Not yet on Vercel (planned, step 5c):** per-IP rate limit, daily request cap, login-attempt limit, circuit breaker, and a CI workflow running `npm test` on every push.
 
 ---
 
@@ -401,7 +401,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 | 4   | LLM parser, `/api/ask`, live evaluation, measured cost                                       | Done                        | `e0b2c6c` → `bae5e96`   |
 | 5a  | Chat UI, answers per type, expandable deals, examples row                                    | Done                        | `17d2198` → `0721c18`   |
 | 5b  | Deploy on Vercel                                                                             | **Ready; not deployed yet** | `eeebd12` (Node 24 pin) |
-| 5c  | Rate limit, daily cap, login-attempt limit, circuit breaker, query cache (Redis), CI         | To do                       |                         |
+| 5c  | Rate limit, daily cap, login-attempt limit, circuit breaker, CI                              | To do                       |                         |
 | 5d  | Password-protected read-only admin page                                                      | Done                        | `cd08687`, `8ebf7bd`    |
 | 5e  | Precomputed example queries                                                                  | Done                        | `e8cbb78`               |
 | —   | Tests for the API logic and the real data                                                    | Done                        | `4a01b29`               |
@@ -409,6 +409,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 | —   | Optional: LLM-suggested aliases with admin approval                                          | Deferred                    |                         |
 | —   | Admin password stored as a scrypt hash                                                       | Done; not committed yet     |                         |
 | —   | All official localities (CBS); covered cities and "no data" worked out from the data         | Done; not committed yet     |                         |
+| —   | In-memory LRU cache: question → model query (1,000 entries per instance)                     | Done; not committed yet     |                         |
 
 ### Changes from the original plan
 

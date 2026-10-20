@@ -232,13 +232,19 @@ function Deals({ deals }: { deals: Deal[] }) {
             <dt>קומה</dt><dd>{d.floor ?? "?"}{d.totalFloors && ` מתוך ${d.totalFloors}`}</dd>
             <dt>שנת בנייה</dt><dd>{d.yearBuilt ?? "לא ידוע"}</dd>
             <dt>מצב</dt><dd>{d.condition ?? "לא ידוע"}</dd>
-            <dt>מעלית</dt><dd>{yesNo(d.hasElevator)}</dd>
-            <dt>חניה</dt><dd>{yesNo(d.hasParking)}</dd>
-            <dt>מרפסת</dt><dd>{yesNo(d.hasBalcony)}</dd>
-            <dt>ממ"ד</dt><dd>{yesNo(d.hasSafeRoom)}</dd>
             <dt>מקור</dt><dd>{d.source}</dd>
             <dt>תאריך</dt><dd>{formatDate(d.date)}{d.dateApprox && " (חודש בלבד)"}</dd>
           </dl>
+          <ul className="features">
+            {([["מעלית", d.hasElevator], ["חניה", d.hasParking], ["מרפסת", d.hasBalcony], ['ממ"ד', d.hasSafeRoom]] as const).map(([label, v]) => (
+              <li key={label}>
+                <span className={v ? "tick yes" : "tick"} role="img" aria-label={yesNo(v)}>
+                  {v === null ? "?" : <svg viewBox="0 0 16 16"><path d={v ? "M3.5 8.5l3 3 6-7" : "M4.5 4.5l7 7M11.5 4.5l-7 7"} /></svg>}
+                </span>
+                {label}
+              </li>
+            ))}
+          </ul>
           {d.flags.filter((f) => FLAG_LABEL[f.reason]).map((f) => (
             <p key={f.reason} className="flag">{FLAG_LABEL[f.reason]}</p>
           ))}
