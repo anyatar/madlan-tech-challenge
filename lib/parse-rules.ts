@@ -115,7 +115,7 @@ export function buildVocabulary(deals: { city: string; neighborhood: string | nu
 
 // Places named in the question, in order. Each run of 1–4 words (longest first), with up to two prefix letters
 // (ב, ל, מ, ו, ה, ש) removed, is looked up in the alias map: a few dozen lookups, however many localities there are.
-function places(cityText: string) {
+export function places(cityText: string) {
   const words = cityText.split(/[\s,.?!():;]+/).filter(Boolean);
   const lookup = (run: string) => {
     for (let k = 0; k <= /^[ובלמהש]{0,2}/.exec(run)![0].length; k++) {

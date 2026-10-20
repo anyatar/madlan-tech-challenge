@@ -32,6 +32,18 @@ test("a real place with no deals becomes 'no data'", async () => {
   assert.deepEqual(r.query, { type: "unsupported", reason: "notInData", detail: "אילת" });
 });
 
+test("a 'no data' detail is always a place name from the official list, never the model's own words", async () => {
+  for (const [detail, expected] of [
+    ["אילת אינה ברשימת הערים הנתמכות", "אילת"], // a real reply from the model (eval-llm)
+    ["קריית שמונה", "קרית שמונה"], // official spelling
+    ["משהו שאינו מקום", undefined], // no place in it → the generic message
+  ] as const) {
+    const r = await parseLlm("x", "", vocab, fake(reply({ type: "unsupported", reason: "notInData", detail })));
+    assert.ok(r.ok);
+    assert.deepEqual(r.query, { type: "unsupported", reason: "notInData", ...(expected && { detail: expected }) }, detail);
+  }
+});
+
 test("refusal, truncation, non-JSON and off-schema replies are failures", async () => {
   for (const [res, error] of [
     [reply({ type: "trend", filters: {} }, "refusal"), "stop-refusal"],

@@ -100,3 +100,17 @@ test("cache: keeps at most CACHE_MAX entries, dropping the least recently used",
   assert.ok(!cache.has("דירות בחולון 0") && !cache.has("דירות בחולון 2"));
   assert.ok(cache.has("דירות בחולון 1"));
 });
+
+test("a price check with no place is answered as a budget question, keeping the details given", async () => {
+  const r = await run("3.2 מיליון לדירת 4 חדרים 100 מטר, זה סביר?", modelSays({ type: "priceCheck", price: 3_200_000, sizeSqm: 100, filters: { rooms: { min: 4, max: 4 } } }));
+  assert.equal(r.body.priceCheckWithoutPlace, true);
+  assert.deepEqual(r.body.query, { type: "budget", budget: 3_200_000, filters: { rooms: { min: 4, max: 4 }, sizeSqm: { min: 90, max: 110 } } });
+  assert.equal((r.body.answer as { type: string }).type, "budget");
+});
+
+test("a price check with a place stays a price check", async () => {
+  const q: Query = { type: "priceCheck", price: 3_200_000, filters: { cities: ["חולון"], rooms: { min: 4, max: 4 } } };
+  const r = await run("3.2 מיליון לדירת 4 חדרים בחולון, זה סביר?", modelSays(q));
+  assert.equal(r.body.priceCheckWithoutPlace, undefined);
+  assert.deepEqual(r.body.query, q);
+});

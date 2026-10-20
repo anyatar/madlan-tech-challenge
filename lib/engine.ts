@@ -55,10 +55,9 @@ function pool(deals: Deal[], f: Filters, m: Metric) {
   return { usable, excluded: matching.filter((d) => d.excludeFromStats).length };
 }
 
-// Too few deals: drop the most specific filters first, and say so.
+// Too few deals: relax the room count, and say so. A place the user named (street, neighborhood) is never dropped:
+// "נווה צדק" with 2 deals answers with those 2 deals, not with a Tel Aviv median.
 const WIDENING: [string, (f: Filters) => Filters | null][] = [
-  ["street", (f) => (f.streets ? { ...f, streets: undefined } : null)],
-  ["neighborhood", (f) => (f.neighborhoods ? { ...f, neighborhoods: undefined } : null)],
   ["rooms", (f) => (f.rooms ? { ...f, rooms: { min: f.rooms.min && f.rooms.min - 0.5, max: f.rooms.max && f.rooms.max + 0.5 } } : null)],
 ];
 

@@ -30,12 +30,23 @@ test("stat excludes flagged deals, counts them, and reports n", () => {
   assert.equal(a.type === "stat" && a.summary?.median, 3_200_000);
 });
 
-test("stat widens neighborhood → city when there are too few deals, and says so", () => {
+test("a named neighborhood is never widened to the city: too few deals → its own deals, no statistic", () => {
   const deals = [...many(2, { neighborhood: "נאות רחל" }), ...many(4, { neighborhood: "אחרת" })];
   const a = answer({ type: "stat", filters: { cities: ["חולון"], neighborhoods: ["נאות רחל"] }, metric: "price" }, deals);
   assert.ok(a.type === "stat");
-  assert.deepEqual(a.widened, ["neighborhood"]);
-  assert.equal(a.n, 6);
+  assert.deepEqual(a.widened, []);
+  assert.equal(a.n, 2);
+  assert.equal(a.summary, null);
+  assert.ok(a.deals.every((d) => d.neighborhood === "נאות רחל"));
+});
+
+test("rooms widen ±0.5 inside the named neighborhood, never outside it", () => {
+  const deals = [...many(2, { neighborhood: "נאות רחל", rooms: 4 }), ...many(2, { neighborhood: "נאות רחל", rooms: 4.5 }), ...many(5, { neighborhood: "אחרת" })];
+  const a = answer({ type: "stat", filters: { neighborhoods: ["נאות רחל"], rooms: { min: 4, max: 4 } }, metric: "price" }, deals);
+  assert.ok(a.type === "stat");
+  assert.deepEqual(a.widened, ["rooms"]);
+  assert.equal(a.n, 4);
+  assert.ok(a.deals.every((d) => d.neighborhood === "נאות רחל"));
 });
 
 test("stat with no possible widening and too few deals returns no summary", () => {

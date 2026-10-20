@@ -165,11 +165,11 @@ One zod schema, used by both parsers, the engine, the LLM prompt (converted to J
 
 - **Filtering:** unknown values never match a filter (unknown parking doesn't count as "with parking").
 - **Statistics:** medians and 25th/75th percentiles, never averages. **Fewer than 4 usable deals (`MIN_N`) → no statistic**, only the deals themselves. Flagged deals are excluded and counted ("not including N unusual deals").
-- **Widening** (statistic and price check only), when fewer than 4 deals: drop street → drop neighborhood → rooms ±0.5. Each step is reported to the user. **Comparison never widens.**
+- **Widening** (statistic and price check only), when fewer than 4 deals: rooms ±0.5 only, reported to the user. A named street or neighborhood is never dropped; with too few deals there, the answer shows those deals without a statistic. **Comparison never widens.**
 - **Per type:**
   - search: up to 50 newest deals, plus the total count
   - stat: median and range
-  - priceCheck: percentile among comparable deals (per m² if a size is given)
+  - priceCheck: percentile among comparable deals (per m² if a size is given). Without a city, neighborhood or street it is answered as a budget question (`lib/ask.ts`), with a note asking for a place
   - budget: deals at 80–100% of the budget, by city
   - ranking: median per m², only groups with 4+ deals, plus a count of groups left out
   - compare: two sides, each with its own n
@@ -239,7 +239,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 | Command            | What it runs                                                                                          | Cost                    |
 | ------------------ | ----------------------------------------------------------------------------------------------------- | ----------------------- |
 | `npm test`         | 95 tests (`lib/*.test.ts`)                                                                            | Free, ~1s               |
-| `npm run eval-llm` | The 30 shared Hebrew questions through the real model: correct count, latency, cost per 10k questions | Real API calls, < $0.01 |
+| `npm run eval-llm` | The 31 shared Hebrew questions through the real model: correct count, latency, cost per 10k questions | Real API calls, < $0.01 |
 
 | Test file             | Covers                                                                                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -257,6 +257,8 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 
 **Run on every build:** `prebuild` runs the cleaning and then `npm test`, so a failing test fails the Vercel build and the live version stays up. A new CSV therefore needs `lib/data.test.ts` updated before it can deploy.
 
+**After any change to the prompt or the schema, run `npm run eval-llm`.** Unit tests use a fake model, so they can't catch a change in what the real model writes.
+
 **Not automated:** the browser UI (manual checks only), lint, and CI on pushes and pull requests (planned in 5c).
 
 ---
@@ -265,8 +267,8 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 
 | Measure                   | Value                                                                                   |
 | ------------------------- | --------------------------------------------------------------------------------------- |
-| LLM parsing accuracy      | 29/30 test questions (the miss is ambiguous Hebrew: "כמה עלו" = cost or went up)        |
-| LLM latency               | median 0.8s, max 1.3s                                                                   |
+| LLM parsing accuracy      | 31/31 test questions                                                                    |
+| LLM latency               | median 1.0s, max 2.3s                                                                   |
 | Example question (preset) | ~40 ms end to end, no model call                                                        |
 | Engine time per question  | 0.02 ms (518 deals), 1.7 ms (51,800), 19 ms (518,000)                                   |
 | System prompt             | ~4,150 tokens: ~800 instructions, ~200 value lists, ~1,600 neighborhoods, ~1,550 schema |

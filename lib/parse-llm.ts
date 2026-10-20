@@ -2,8 +2,8 @@
 // and its output is schema-validated. Any failure returns { ok: false } and the caller falls back to the rule parser.
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { CONDITIONS, PROPERTY_TYPES } from "./aliases.ts";
-import type { Vocabulary } from "./parse-rules.ts";
+import { CONDITIONS, PROPERTY_TYPES, cityKey } from "./aliases.ts";
+import { places, type Vocabulary } from "./parse-rules.ts";
 import { Query, type Filters } from "./schema.ts";
 
 export const MODEL = process.env.LLM_MODEL || "claude-haiku-5-5"; // override per deploy without a code change
@@ -29,7 +29,7 @@ Query types:
 - ranking: cheapest or most expensive places. groupBy "neighborhood" when one city is given or neighborhoods are asked about, otherwise "city".
 - compare: two segments side by side. Shared conditions go in filters; what differs goes in groups[0] and groups[1], in the order the user wrote them.
 - trend: how prices changed over the years.
-- unsupported: reason "forecast" (future prices), "advice" (should I buy or invest), "notInData" (rent, yield, schools, transport, asking prices or listings, or a place that is not in the city list: put the place name in detail), "other" (anything else the types above cannot express).
+- unsupported: reason "forecast" (future prices), "advice" (should I buy or invest), "notInData" (rent, yield, schools, transport, asking prices or listings, or a place that is not in the city list: put only the place name in detail, nothing else), "other" (anything else the types above cannot express).
 
 Filter rules:
 - Use only the values listed below, spelled exactly. Map aliases to the listed city name (ת"א → תל אביב-יפו, ב"ש → באר שבע, מודיעין → מודיעין-מכבים-רעות).
@@ -39,6 +39,7 @@ Filter rules:
 - Dates are "YYYY" or "YYYY-MM" in dateFrom/dateTo. The latest data is from ${lastDealMonth}; relative periods ("בשנה האחרונה") count back from that month.
 - "דירה"/"דירות" alone means any property type: no propertyTypes filter. Only specific types filter.
 - "עם חניה" → hasParking true; "בלי/ללא חניה" → false. Same for מעלית (hasElevator), מרפסת (hasBalcony), ממ"ד (hasSafeRoom).
+- "עד 3 מיליון" next to other filters is a price limit on a search (price.max). Use budget only when the user says how much money they have or asks what it can buy ("יש לי", "מה אפשר לקנות", "תקציב").
 - Include only what the question says. Never guess a filter.
 
 Cities: ${[...vocab.cities].sort().join(", ")}
@@ -59,6 +60,15 @@ const unknownNeighborhood = (q: Query, vocab: Vocabulary) =>
 // A real place (the schema checked that) with no deals.
 const uncoveredCity = (q: Query, vocab: Vocabulary) =>
   allFilters(q).flatMap((f) => f.cities ?? []).find((c) => !vocab.cities.has(c));
+
+// The "no data for X" message shows the detail as a place name, so the model's free text never reaches the screen:
+// "אילת אינה ברשימת הערים" → "אילת", "קריית שמונה" → "קרית שמונה"; no known place in it → no detail (the generic message).
+function placeDetail(q: Query): Query {
+  if (q.type !== "unsupported" || q.reason !== "notInData" || !q.detail) return q;
+  const { detail: _, ...rest } = q;
+  const place = places(cityKey(q.detail))[0];
+  return place ? { ...rest, detail: place } : rest;
+}
 
 export type LlmResult =
   | { ok: true; query: Query; ms: number; usage: Anthropic.Usage }
@@ -94,7 +104,7 @@ export async function parseLlm(
     const unknown = unknownNeighborhood(checked.data, vocab);
     if (unknown) return fail(`unknown-neighborhood:${unknown}`);
     const uncovered = uncoveredCity(checked.data, vocab);
-    const query: Query = uncovered ? { type: "unsupported", reason: "notInData", detail: uncovered } : checked.data;
+    const query: Query = uncovered ? { type: "unsupported", reason: "notInData", detail: uncovered } : placeDetail(checked.data);
     return { ok: true, query, ms: Date.now() - started, usage: res.usage };
   } catch (e) {
     if (e instanceof Anthropic.APIUserAbortError) return fail("timeout");

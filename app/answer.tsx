@@ -12,6 +12,7 @@ export type AskResponse = {
   question: string;
   parsedBy: "preset" | "llm" | "rules" | null;
   query?: Query;
+  priceCheckWithoutPlace?: boolean;
   alternative?: Query;
   answer?: Answer;
 };
@@ -30,6 +31,12 @@ export function AnswerView({ res }: { res: AskResponse }) {
   return (
     <div className="answer">
       <Interpretation query={query} />
+      {res.priceCheckWithoutPlace && (
+        <p className="note">
+          לא צוינה עיר, ולכן אי אפשר לקבוע אם המחיר סביר: המחירים שונים מאוד בין ערים. במקום זה, אלה העסקאות שנסגרו
+          במחיר הזה, לפי עיר. לבדיקה של דירה מסוימת, ציינו עיר או שכונה.
+        </p>
+      )}
       <Body a={a} />
       {"widened" in a && a.widened?.map((w) => <p key={w} className="note">{WIDENED[w]}</p>)}
       {"excluded" in a && a.excluded > 0 && (

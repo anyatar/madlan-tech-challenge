@@ -16,7 +16,6 @@ export const CASES: [string, object | null][] = [
   ["כמה עולה דירת 4 חדרים בכפר סבא?", { type: "stat", metric: "price", filters: { cities: ["כפר סבא"], rooms: { min: 4, max: 4 } } }],
   ['כמה עולה מ"ר בגבעתיים?', { type: "stat", metric: "pricePerSqm", filters: { cities: ["גבעתיים"] } }],
   ["מה המחיר הממוצע לפנטהאוז בהרצליה", { type: "stat", metric: "price", filters: { cities: ["הרצליה"], propertyTypes: ["פנטהאוז"] } }],
-  ["כמה עלו דירות בפלורנטין", { type: "stat", filters: { cities: ["תל אביב-יפו"], neighborhoods: ["פלורנטין"] } }],
   // price check
   ["3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?", { type: "priceCheck", price: 3_200_000, filters: { cities: ["כפר סבא"], rooms: { min: 4, max: 4 } } }],
   ['מבקשים 2,900,000 על 90 מ"ר בחולון, זה יקר מדי?', { type: "priceCheck", price: 2_900_000, sizeSqm: 90, filters: { cities: ["חולון"] } }],

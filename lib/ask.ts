@@ -12,6 +12,14 @@ export const CACHE_MAX = 1000;
 // cache: question → the model's query, least recently used first (a Map keeps insertion order).
 export type AskDeps = { deals: Deal[]; vocab: Vocabulary; llm: (question: string) => Promise<LlmResult>; cache?: Map<string, Query> };
 
+// A price check judges one price against comparable deals, so it needs a place: without one, prices from every
+// city would be mixed into one verdict. Answer it as "what does this money buy" instead, keeping the details given.
+function withPlace(q: Query): Query {
+  if (q.type !== "priceCheck" || q.filters.cities?.length || q.filters.neighborhoods?.length || q.filters.streets?.length) return q;
+  const sizeSqm = q.sizeSqm && { min: Math.round(q.sizeSqm * 0.9), max: Math.round(q.sizeSqm * 1.1) };
+  return { type: "budget", filters: { ...q.filters, ...(sizeSqm && { sizeSqm }) }, budget: q.price };
+}
+
 // Cities the query names, including both sides of a comparison.
 const cities = (q: Query) =>
   q.type === "unsupported" ? [] : [...new Set([q.filters, ...(q.type === "compare" ? q.groups : [])].flatMap((f) => f.cities ?? []))].sort();
@@ -32,8 +40,9 @@ export async function ask(body: unknown, { deals, vocab, llm: parseLlm, cache }:
   if (hit) cache!.delete(key); // re-inserted below as the most recently used
   const llm = hit ? { ok: true as const, query: hit, ms: 0 } : await parseLlm(question);
 
-  const query = llm.ok ? llm.query : rules;
-  if (!query) return { status: 200, body: { question, parsedBy: null, llm: { ok: false, error: llm.ok ? undefined : llm.error } } };
+  const parsed = llm.ok ? llm.query : rules;
+  if (!parsed) return { status: 200, body: { question, parsedBy: null, llm: { ok: false, error: llm.ok ? undefined : llm.error } } };
+  const query = withPlace(parsed);
 
   // The two parsers disagree on a city the rules saw explicitly: answer with the LLM's reading, offer the other.
   const ruleCities = rules ? cities(rules) : [];
@@ -51,6 +60,7 @@ export async function ask(body: unknown, { deals, vocab, llm: parseLlm, cache }:
       question,
       parsedBy: llm.ok ? "llm" : "rules",
       query,
+      priceCheckWithoutPlace: query !== parsed || undefined,
       alternative,
       answer: answer(query, deals),
       llm: llm.ok ? { ok: true, ms: llm.ms, ...(hit && { cached: true }) } : { ok: false, error: llm.error, ms: llm.ms },

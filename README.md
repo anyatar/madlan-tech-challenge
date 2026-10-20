@@ -10,7 +10,7 @@ A Hebrew, right-to-left web app for **home buyers**. You ask a free-text questio
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
 | 1. Live and public                            | Next.js on Vercel                                                                                                        | [Deployment](#12-deployment)                                     |
 | 2. Hebrew, RTL                                | `lang="he" dir="rtl"`, Hebrew UI, templates and parsing                                                                  | [What it does](#1-what-it-does)                                  |
-| 3. The LLM does real work                     | It turns free Hebrew (slang, nicknames, relative dates, comparisons) into a validated query; 29/30 on the evaluation set | [The LLM line](#3-what-goes-to-the-model-and-what-code-computes) |
+| 3. The LLM does real work                     | It turns free Hebrew (slang, nicknames, relative dates, comparisons) into a validated query; 31/31 on the evaluation set | [The LLM line](#3-what-goes-to-the-model-and-what-code-computes) |
 | 4. 10,000 requests a day, known cost          | ~$21/month for the LLM, $0 hosting; presets, prompt cache, query cache                                                   | [Cost](#5-cost-and-scale-at-10000-requests-a-day)                |
 | 5. Never states what the data doesn't support | No model-written facts; minimum sample size; visible basis for every number                                              | [Grounding](#3-what-goes-to-the-model-and-what-code-computes)    |
 | 6. Survives a slow, wrong or missing model    | 4 s deadline, strict validation, a keyword parser with the same schema as fallback                                       | [Failures](#4-failure-handling)                                  |
@@ -25,7 +25,7 @@ A Hebrew, right-to-left web app for **home buyers**. You ask a free-text questio
 | ------------- | ---------------------------------------- | -------------------------------------------------------------- |
 | Search        | דירות 4 חדרים ברעננה עם חניה עד 3 מיליון | Matching deals, newest first, with the total count             |
 | Typical price | כמה עולה דירת 4 חדרים בכפר סבא?          | Median, middle half (25th–75th percentile), n, dates           |
-| Price check   | 3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?  | Where the price falls among comparable deals (percentile)      |
+| Price check   | 3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?  | Where the price falls among comparable deals (percentile). Without a city: answered as a budget question, by city |
 | Budget        | יש לי 2 מיליון, מה אפשר לקנות?           | Deals at 80–100% of the budget, by city: count, rooms, size    |
 | Ranking       | איפה הכי זול לקנות 3 חדרים?              | Cities or neighborhoods by median price per m² (5+ deals each) |
 | Comparison    | רמת גן מול גבעתיים                       | Two sides, each with its own median and n; never widened       |
@@ -91,14 +91,14 @@ If the model and the rule parser disagree on a city the rules saw explicitly, th
 
 ## 3. What goes to the model, and what code computes
 
-| Step                                                                                                                 | Done by                                                             | Why it sits there                                                            |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Understanding free Hebrew (synonyms, word order, nicknames like "העיר הלבנה", relative dates, two-sided comparisons) | **LLM**                                                             | The one job keywords do badly. This is the "real work"                       |
-| Same, when the model is slow, down or wrong                                                                          | Rule parser (code)                                                  | Same `Query` schema, so the rest of the system doesn't care which parser ran |
-| Checking the model's output                                                                                          | Code: zod schema, official locality list, neighborhoods in the data | The model's reply is untrusted input                                         |
-| Cleaning the data                                                                                                    | Code, at build time                                                 | Must be reproducible and logged row by row                                   |
-| Every number: counts, medians, percentiles, groups                                                                   | Code (engine)                                                       | A model can invent or miscompute numbers                                     |
-| Every sentence of the answer                                                                                         | Hebrew templates                                                    | So nothing is phrased beyond what was computed                               |
+| Step                                                                                                                      | Done by                                                             | Why it sits there                                                            |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Understanding natural-language Hebrew (synonyms, word order, short forms like ת"א, relative dates, two-sided comparisons) | **LLM**                                                             | The one job keywords do badly. This is the "real work"                       |
+| Same, when the model is slow, down or wrong                                                                               | Rule parser (code)                                                  | Same `Query` schema, so the rest of the system doesn't care which parser ran |
+| Checking the model's output                                                                                               | Code: zod schema, official locality list, neighborhoods in the data | The model's reply is untrusted input                                         |
+| Cleaning the data                                                                                                         | Code, at build time                                                 | Must be reproducible and logged row by row                                   |
+| Every number: counts, medians, percentiles, groups                                                                        | Code (engine)                                                       | A model can invent or miscompute numbers                                     |
+| Every sentence of the answer                                                                                              | Hebrew templates                                                    | So nothing is phrased beyond what was computed                               |
 
 **What the model receives:** a cached system prompt (about 4,000 tokens) with the query types and rules, the covered cities, property types, conditions, every "neighborhood — city" pair, the latest data month (for "last year"), and the JSON Schema of `Query`. The user message is **only the question**. No deal rows are ever sent.
 
@@ -118,22 +118,22 @@ If the model and the rule parser disagree on a city the rules saw explicitly, th
 
 Every model failure is a result, not an exception, and every one ends with an answer from the rule parser (or an honest "not understood").
 
-| What goes wrong                                                          | What the system does                                               | What the user sees                                 |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------- |
-| No API key                                                               | The SDK fails on the request; logged; rule parser                  | A normal answer + "parsed by keywords" note        |
-| Model slow (over 4 s, including retries)                                 | Aborted (`timeout`); rule parser                                   | Answer within ~4 s + note                          |
-| Rate limit (429) or server error (5xx)                                   | SDK retries twice inside the 4 s; then `api-<status>`; rule parser | Answer + note                                      |
-| Connection dropped                                                       | `connection`; rule parser                                          | Answer + note                                      |
-| Reply isn't JSON                                                         | `invalid-json`; rule parser                                        | Answer + note                                      |
-| Reply doesn't match the schema (unknown type, made-up city, wrong field) | `schema-mismatch`; rule parser                                     | Answer + note                                      |
-| Reply names a neighborhood that doesn't exist                            | `unknown-neighborhood`; rule parser                                | Answer + note                                      |
-| Reply names a real place with no deals                                   | Converted to "no data for X"                                       | "אין במאגר עסקאות ב…"                              |
-| Refusal or truncated reply (`max_tokens`)                                | `stop-refusal` / `stop-max_tokens`; rule parser                    | Answer + note                                      |
-| Model and rule parser disagree on the city                               | Model's reading used, the other offered                            | Answer + "the keyword parser understood …" warning |
-| Neither parser understands the question                                  | No query                                                           | Hebrew guidance: name a city, rooms, price or type |
-| Anthropic monthly spend limit reached                                    | API errors → rule parser for every question                        | Answers continue, all keyword-parsed               |
-| Invalid request (empty, over 300 chars)                                  | 400, no model call                                                 | "The question wasn't accepted"                     |
-| Server unreachable                                                       | Browser catches the error                                          | "No connection to the server, try again"           |
+| What goes wrong                                                          | What the system does                                               | What the user sees                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| No API key                                                               | The SDK fails on the request; logged; rule parser                  | A normal answer + "parsed by keywords" note                |
+| Model slow (over 4 s, including retries)                                 | Aborted (`timeout`); rule parser                                   | Answer within ~4 s + note                                  |
+| Rate limit (429) or server error (5xx)                                   | SDK retries twice inside the 4 s; then `api-<status>`; rule parser | Answer + note                                              |
+| Connection dropped                                                       | `connection`; rule parser                                          | Answer + note                                              |
+| Reply isn't JSON                                                         | `invalid-json`; rule parser                                        | Answer + note                                              |
+| Reply doesn't match the schema (unknown type, made-up city, wrong field) | `schema-mismatch`; rule parser                                     | Answer + note                                              |
+| Reply names a neighborhood that doesn't exist                            | `unknown-neighborhood`; rule parser                                | Answer + note                                              |
+| Reply names a real place with no deals                                   | Converted to "no data for X"                                       | "אין במאגר עסקאות ב…"                                      |
+| Refusal or truncated reply (`max_tokens`)                                | `stop-refusal` / `stop-max_tokens`; rule parser                    | Answer + note                                              |
+| Model and rule parser disagree on the city                               | Model's reading used, the other offered                            | Answer (model) + "the keyword parser understood …" warning |
+| Neither parser understands the question                                  | No query                                                           | Hebrew guidance: name a city, rooms, price or type         |
+| Anthropic monthly spend limit reached                                    | API errors → rule parser for every question                        | Answers continue, all keyword-parsed                       |
+| Invalid request (empty, over 300 chars)                                  | 400, no model call                                                 | "The question wasn't accepted"                             |
+| Server unreachable                                                       | Browser catches the error                                          | "No connection to the server, try again"                   |
 
 ---
 
@@ -178,7 +178,6 @@ At ~7 requests a minute, every request refreshes the 5-minute prompt cache, so o
 | --------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | LLM cost              | ~$210/month (cache warm)                                | Still small. Shrink the prompt: move the neighborhood list out of it and check neighborhoods in code, as cities already are                                                               |
 | Abuse and peaks       | A flood costs real money                                | Per-IP rate limit, daily model-call cap, circuit breaker, as counters in **Redis** shared by every instance                                                                               |
-| Query cache           | Per-instance memory hits less as instances multiply     | Move it to **Redis**: one cache shared by all instances, kept across deploys, keyed by question + prompt hash                                                                             |
 | Anthropic rate limits | Peaks may exceed the account's requests-per-minute      | Raise the account tier; excess requests already fall back to rules                                                                                                                        |
 | Hosting               | ~3M function calls/month exceeds Hobby                  | Paid plan                                                                                                                                                                                 |
 | Popular questions     | Many repeats of the same phrasings                      | Grow the preset list from logged questions: free, instant, tested                                                                                                                         |
@@ -188,7 +187,7 @@ At ~7 requests a minute, every request refreshes the 5-minute prompt cache, so o
 
 ## 6. Model choice
 
-- **Claude Haiku 5.5** (`claude-haiku-5-5`): the cheapest current Claude model. Parsing needs no reasoning, so thinking is off and effort is low. Measured: 29/30 correct on the Hebrew evaluation set, median 0.8 s, max 1.3 s. The one miss is genuinely ambiguous Hebrew ("כמה עלו דירות בפלורנטין": cost, or went up?).
+- **Claude Haiku 5.5** (`claude-haiku-5-5`): the cheapest current Claude model. Parsing needs no reasoning, so thinking is off and effort is low. Measured: 31/31 correct on the Hebrew evaluation set, median 1.0 s, max 2.3 s.
 - **Overridable per deploy** with the `LLM_MODEL` environment variable, no code change.
 - **Plain JSON validated by zod, not the API's structured outputs:** structured outputs rejected our schema (8 query types × ~15 optional filters) as "Schema is too complex" after ~40 s. The schema is in the cached prompt instead.
 - **Rejected: free tiers of open models.** Their rate limits don't cover 10,000 requests a day, so at peak most answers would come from the fallback; their Hebrew quality is unmeasured; and the paid cost is small.
@@ -200,7 +199,9 @@ At ~7 requests a minute, every request refreshes the 5-minute prompt cache, so o
 The CSV is real-world shaped and unclean. Cleaning is a **deterministic build step** (`scripts/clean.ts` → `lib/clean.ts`): the same CSV always gives the same output, no LLM involved. **Every issue ends in one of three outcomes, always recorded:**
 
 - **Fixed:** the value is normalized and the change is logged (row, field, before, after, rule).
-- **Flagged:** the row stays, but a field is set to unknown, or the deal is left out of statistics pending review.
+- **Flagged:** the deal is kept, but something in it is marked. Depending on the problem, one of two things happens:
+  - **One field is untrusted:** that field is treated as unknown, and the deal still counts. Example: "new from contractor" in a building sold 30 years after construction → condition unknown.
+  - **The whole price is suspicious:** the deal is left out of all statistics until someone reviews it, but still appears in search with a badge. Example: a price per m² 2.5× or more away from its city's median.
 - **Quarantined:** the row is left out of search and statistics, and kept in the report with its reason. |
 
 `/admin` shows all of it: quarantined rows, deals pending review, every flag by reason, possible duplicates under different IDs, every automatic fix (before → after), and the thresholds.
@@ -221,7 +222,7 @@ The CSV is real-world shaped and unclean. Cleaning is a **deterministic build st
 
 | Setting               | Value    | File                                       | Effect                                                      |
 | --------------------- | -------- | ------------------------------------------ | ----------------------------------------------------------- |
-| `MIN_N`               | 5        | `lib/engine.ts`                            | Minimum deals for any statistic; also when widening stops   |
+| `MIN_N`               | 4        | `lib/engine.ts`                            | Minimum deals for any statistic; also when widening stops   |
 | `MAX_DEALS`           | 50       | `lib/engine.ts`                            | Deals returned per answer (n always reports the full count) |
 | `MAX_QUESTION`        | 300      | `lib/ask.ts`, `app/page.tsx`               | Longest accepted question                                   |
 | `CACHE_MAX`           | 1,000    | `lib/ask.ts`                               | Query cache entries per server instance                     |
@@ -343,7 +344,7 @@ Requirements: Node 24 (pinned in `package.json`, Vercel reads it), no database, 
 
 - **No rate limit, daily cap or circuit breaker yet.** The Anthropic spend limit is the only cost guard against a flood, and a model outage makes each question wait up to 4 s before the fallback.
 - **The query cache is per server instance** and emptied on restart or deploy, so repeats only hit on a warm instance.
-- **A price check without a city** compares against deals from all cities and calls them "similar deals". It should ask for a location instead.
+- **No way to recover bad data from the app.** A flagged or quarantined deal stays that way: `/admin` only shows it, and there is no "approve" or "restore". Bringing a deal back means fixing `data/deals.csv` or a rule in code (a threshold, a city nickname) and redeploying. This is what moving the deals to Postgres solves: approving or restoring a deal becomes a change in the database, not a redeploy (see [Next steps](#14-next-steps-for-a-real-madlan-feature)).
 - The UI has no automated browser tests; it was checked by hand.
 
 ---
@@ -354,8 +355,8 @@ Requirements: Node 24 (pinned in `package.json`, Vercel reads it), no database, 
 
 **Then, in order:**
 
-1. **Production guards and a shared cache in Redis:** per-IP rate limit (429 with `Retry-After`), a daily model-call cap that falls back to rules, a circuit breaker, and the question → query cache moved from per-instance memory to Redis, so all instances share it and it survives deploys. All four are small keys with an expiry, read on every request.
-2. **Better comparables:** match by size, property type and building age, not only city and rooms; require a location for price checks.
+1. **Production guards in Redis:** per-IP rate limit (429 with `Retry-After`), a daily model-call cap that falls back to rules, and a circuit breaker. All three are small keys with an expiry, read on every request and shared by all instances. Only at a major scale-up (well beyond 10×), also move the question → query cache from per-instance memory to Redis, when a shared cache starts to pay for itself.
+2. **Better comparables:** match by size, property type and building age, not only city and rooms.
 3. **Deal highlights computed in code:** e.g. "18% below the median for similar apartments", parking + elevator, new building. Grounded, testable and free. LLM wording only on top of those facts, if it measurably helps.
 4. **Admin:** company SSO instead of a shared password; login-attempt limits.
 5. **UI:** automated browser tests; show the actual size range for small groups.
