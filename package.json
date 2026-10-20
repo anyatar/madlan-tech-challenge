@@ -10,10 +10,11 @@
     "clean-data": "node scripts/clean.ts",
     "predev": "npm run clean-data",
     "dev": "next dev --webpack",
-    "prebuild": "npm run clean-data",
+    "prebuild": "npm run clean-data && npm test",
     "build": "next build --webpack",
     "start": "next start",
     "test": "node --test \"lib/*.test.ts\"",
+    "lint": "eslint",
     "fetch-localities": "node scripts/fetch-localities.ts",
     "hash-password": "node scripts/hash-password.ts",
     "eval-llm": "node --env-file=.env.local scripts/eval-llm.ts"
@@ -29,6 +30,8 @@
     "@types/node": "^24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.2",
     "typescript": "^5"
   }
 }

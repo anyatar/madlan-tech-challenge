@@ -94,6 +94,9 @@ Short record of what we chose and why. Update when a decision changes.
 
 ## Build tooling
 - **`dev` and `build` use Webpack (`--webpack`), not Next 16's default Turbopack.** On the development machine, Windows Application Control blocks Next's native compiler (`next-swc.win32-x64-msvc.node`); Next falls back to a WebAssembly compiler, which doesn't support Turbopack. Webpack works everywhere, including Vercel, at the cost of slower builds, which don't matter at this size. The "Attempted to load @next/swc-win32-x64-msvc" warning still prints locally and is harmless.
+- **Tests run on every build** (`prebuild`: cleaning, then `npm test`). A failing test fails the Vercel build, and Vercel keeps the previous version live, so broken logic can't reach production. Tests need no secrets and take about a second. Side effect, intended: `lib/data.test.ts` pins the real CSV's results, so a new CSV can't deploy until those numbers are reviewed and updated.
+- **ESLint with the standard Next.js config** (`eslint-config-next`: core-web-vitals + TypeScript), run by hand with `npm run lint`, not in the build, so a style warning can't block a deploy. Two rules changed for this codebase: Hebrew abbreviations (מ"ר, ממ"ד) may use a plain `"` in JSX text, and `_`-named variables that drop a key on purpose aren't flagged. On the code as it stood, lint found no real bugs.
+- **`node:test`, not Vitest.** Node 24 runs the TypeScript tests directly, with no dependency or config. Vitest would earn its place only for React component tests (jsdom), which don't exist yet.
 
 ## Admin page
 - **`/admin` shows every data-quality issue, read-only:** quarantined rows, deals pending review, all flags by reason, possible duplicates, every automatic fix (before → after), and the thresholds. No editing: decisions about the data stay in code and config, where they are reviewed and reproducible.

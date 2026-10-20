@@ -66,7 +66,7 @@ REQUEST TIME (POST /api/ask)
 | LLM        | Anthropic SDK `@anthropic-ai/sdk` 0.135, model `claude-haiku-5-5` | Plain JSON reply, validated by zod (not structured outputs)                                                               |
 | Tests      | Node's built-in test runner (`node --test`)                       | No test framework dependency                                                                                              |
 | Font       | Heebo via `next/font/google`                                      | Hebrew + Latin subsets                                                                                                    |
-| Storage    | **None**                                                          | Data is bundled at build. The query cache is in memory. Redis (Upstash) is planned for the rate limit                     |
+| Storage    | **None**                                                          | Data is bundled at build. The query cache is in memory. Redis (Upstash) is planned for the rate limit                                         |
 | Hosting    | Vercel (Hobby, free)                                              | See section 10                                                                                                            |
 
 Runtime dependencies are only `next`, `react`, `react-dom`, `zod` and `@anthropic-ai/sdk`. The CSV parser is ~20 lines of our own.
@@ -220,7 +220,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 - **The result:** headline number, range, percentile verdict, tables (budget, trend), ranked list, or side-by-side cards.
 - **The basis:** "based on N deals, from date to date".
 - **Notes:** widening, excluded unusual deals, "AI unavailable, parsed by keywords", and the parsers' disagreement warning.
-- **Deals:** expandable rows (native `<details>`) with price per m², floor, year, condition, features, source and date, plus warnings for flagged deals. 10 at a time, with "show more".
+- **Deals:** expandable rows (native `<details>`) with price per m², floor, year, condition, source and date in two columns (one on phones), the four yes/no features as check / cross / "?" icons with a spoken label, plus warnings for flagged deals. 10 at a time, with "show more".
 - **Declines:** a plain Hebrew explanation of what the app does instead.
 
 **Accessibility and RTL:** `lang="he" dir="rtl"`, labelled input and buttons, `aria-live` on the conversation, logical CSS properties, dark mode through CSS variables, and a phone layout below 480px.
@@ -238,7 +238,7 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 
 | Command            | What it runs                                                                                          | Cost                    |
 | ------------------ | ----------------------------------------------------------------------------------------------------- | ----------------------- |
-| `npm test`         | 80 tests (`lib/*.test.ts`)                                                                            | Free, ~1s               |
+| `npm test`         | 95 tests (`lib/*.test.ts`)                                                                            | Free, ~1s               |
 | `npm run eval-llm` | The 30 shared Hebrew questions through the real model: correct count, latency, cost per 10k questions | Real API calls, < $0.01 |
 
 | Test file             | Covers                                                                                                                                                                               |
@@ -251,11 +251,13 @@ The route loads `deals.json`, the vocabulary, the system prompt and the API clie
 | `ask.test.ts`         | Input validation without a model call, LLM vs. rules choice, "not understood", the disagreement warning, presets never calling the model                                             |
 | `examples.test.ts`    | Each preset is a valid query and equals what the rule parser produces for its text                                                                                                   |
 | `render.test.ts`      | Hebrew chips, verdict bands, dates, decline messages                                                                                                                                 |
-| `admin-auth.test.ts`  | Password check, salted hash, malformed hash, session expiry, forged, tampered and foreign cookies                                                                                                                |
+| `admin-auth.test.ts`  | Password check, salted hash, malformed hash, session expiry, forged, tampered and foreign cookies                                                                                    |
 
 **Practice used:** when a new test passes on its first run, break the code on purpose once to confirm the test can fail.
 
-**Not automated:** the browser UI (manual checks only), and CI (planned with deploy).
+**Run on every build:** `prebuild` runs the cleaning and then `npm test`, so a failing test fails the Vercel build and the live version stays up. A new CSV therefore needs `lib/data.test.ts` updated before it can deploy.
+
+**Not automated:** the browser UI (manual checks only), lint, and CI on pushes and pull requests (planned in 5c).
 
 ---
 
@@ -286,13 +288,14 @@ npm install
 cp .env.example .env.local     # then fill in both values
 npm run dev                    # cleans the data, then starts http://localhost:3000
 npm test
+npm run lint                   # ESLint: Next.js, React hooks and TypeScript rules
 npm run build && npm run start # production build locally
 ```
 
-| Variable            | Needed for  | If missing                                        |
-| ------------------- | ----------- | ------------------------------------------------- |
-| `ANTHROPIC_API_KEY` | LLM parsing | Every question falls back to the rule parser      |
-| `ADMIN_PASSWORD_HASH` | `/admin`  | Admin login is disabled, with a message saying so |
+| Variable              | Needed for  | If missing                                        |
+| --------------------- | ----------- | ------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | LLM parsing | Every question falls back to the rule parser      |
+| `ADMIN_PASSWORD_HASH` | `/admin`    | Admin login is disabled, with a message saying so |
 
 Windows note: if a security policy blocks `next-swc.win32-x64-msvc.node`, the warning is harmless; the `--webpack` flag in the scripts makes everything work. Don't run `npm run build` while `npm run start` is serving: the build replaces `.next` under the running server and its pages break until a restart.
 
@@ -303,7 +306,7 @@ Windows note: if a security policy blocks `next-swc.win32-x64-msvc.node`, the wa
 **Already prepared in the repo:**
 
 - Node 24 pinned
-- the build runs the cleaning step automatically (`prebuild`)
+- the build runs the cleaning step and all tests automatically (`prebuild`)
 - the CSV is committed and generated files are git-ignored
 - secrets are only needed at runtime
 
@@ -327,7 +330,7 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 
 **Redeploying:**
 
-- **Every push to `main` deploys automatically** to the same URL. The previous version stays live until the new build succeeds; a failed build never replaces the site.
+- **Every push to `main` deploys automatically** to the same URL. The previous version stays live until the new build succeeds; a failed build (including a failing test) never replaces the site.
 - **Rollback:** Deployments → an older deployment → **Promote to Production**.
 - **Changed an environment variable:** Deployments → latest → **Redeploy** (needed for it to take effect). Changing `ADMIN_PASSWORD_HASH` logs out all admins.
 - **Other branches** get their own preview URLs without touching production.
@@ -410,6 +413,8 @@ A fresh clone was verified to install, build and pass all tests with **no** secr
 | —   | Admin password stored as a scrypt hash                                                       | Done; not committed yet     |                         |
 | —   | All official localities (CBS); covered cities and "no data" worked out from the data         | Done; not committed yet     |                         |
 | —   | In-memory LRU cache: question → model query (1,000 entries per instance)                     | Done; not committed yet     |                         |
+| —   | Tests run on every build; ESLint (`npm run lint`)                                            | Done; not committed yet     |                         |
+| —   | Deal details in two columns; yes/no fields as check/cross icons                              | Done; not committed yet     |                         |
 
 ### Changes from the original plan
 
