@@ -299,15 +299,7 @@ Notes: without `ANTHROPIC_API_KEY` the app still works, using the rule parser on
 
 ## 11. Testing
 
-| Test file                                                  | Covers                                                                                                                                                              |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clean.test.ts`                                            | CSV quoting, dates, aliases, localities, booleans, recomputed price per m², quarantine reasons, duplicates and precedence, outliers, contradictions                 |
-| `data.test.ts`                                             | **Pins the real CSV's results** (530 → 518, which rows are quarantined or excluded, covered cities). Fails on any change to cleaning, by design                     |
-| `engine.test.ts`                                           | Minimum sample, exclusions, widening, unknown values, percentile, budget, ranking, comparison, partial years                                                        |
-| `parse-rules.test.ts`                                      | The shared Hebrew questions; "no data" for uncovered places in any spelling; everyday words that are village names aren't read as places                            |
-| `parse-llm.test.ts`                                        | A fake model: valid reply, code fences, unknown neighborhood, real place with no deals, refusal, truncation, non-JSON, off-schema, timeout, dropped connection, 529 |
-| `ask.test.ts`                                              | Input validation without a model call, model vs. rules, disagreement warning, presets, query cache (hits, what isn't kept, LRU eviction)                            |
-| `examples.test.ts`, `render.test.ts`, `admin-auth.test.ts` | Presets equal the rule parser's reading; Hebrew wording; password hash, session expiry, forged and tampered cookies                                                 |
+95 unit tests (`node:test`, `lib/*.test.ts`) covering cleaning, parsers, engine, wording and admin auth; the LLM parser is tested against a fake model.
 
 **Tests run on every build**, so a failing test stops a deploy and the live version stays up. A new CSV therefore needs `lib/data.test.ts` updated before it can deploy.
 
