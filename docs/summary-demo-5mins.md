@@ -28,7 +28,6 @@
 ## Free-form Hebrew
 
 - Handles everyday variations: a city spelled differently or shortened, or with a dash or underscore. תל אביב יפו (ת"א): all of these work.
-- At the same time the system knows which cities exist, so it won't accept a city that doesn't exist at all.
 
 ## The model never invents data
 
@@ -49,14 +48,14 @@
 
 `/admin` is password-protected and read-only. It is the data-quality report written by the cleaning step at build time (`data/quality.json`). With the current CSV: 530 rows in, 518 deals out.
 
-| Section | What it holds | Now |
-| --- | --- | --- |
-| Quarantined (בהסגר) | Rows left out of search and statistics, each with its reason | 2 (price below ₪100,000) |
-| Pending review (ממתינות לבדיקה) | Deals whose price is suspicious: price per m² 2.5× or more away from the city median. Still in search with a badge, but left out of every statistic until a person reviews them | 2 |
-| All flags (כל הסימונים) | Deals kept, with one field marked untrusted and treated as unknown. E.g. "new from contractor" in a building more than 5 years old, or a garden apartment above the ground floor | 86 new-but-old building, 50 garden apartment above ground |
-| Possible duplicates (כפילויות אפשריות) | The same deal reported under different IDs | 0 |
-| Automatic fixes (תיקונים אוטומטיים) | Every normalization, before → after, grouped by rule: whitespace, date and number formats, city aliases, room suffixes, recomputed price per m², merged duplicates | 512 changes |
-| Thresholds (ספים בשימוש) | The limits the cleaning used: minimum price, size range, outlier ratios, new-build age | — |
+| Section                                | What it holds                                                                                                                                                                    | Now                                                       |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Quarantined (בהסגר)                    | Rows left out of search and statistics, each with its reason                                                                                                                     | 2 (price below ₪100,000)                                  |
+| Pending review (ממתינות לבדיקה)        | Deals whose price is suspicious: price per m² 2.5× or more away from the city median. Still in search with a badge, but left out of every statistic until a person reviews them  | 2                                                         |
+| All flags (כל הסימונים)                | Deals kept, with one field marked untrusted and treated as unknown. E.g. "new from contractor" in a building more than 5 years old, or a garden apartment above the ground floor | 86 new-but-old building, 50 garden apartment above ground |
+| Possible duplicates (כפילויות אפשריות) | The same deal reported under different IDs                                                                                                                                       | 0                                                         |
+| Automatic fixes (תיקונים אוטומטיים)    | Every normalization, before → after, grouped by rule: whitespace, date and number formats, city aliases, room suffixes, recomputed price per m², merged duplicates               | 512 changes                                               |
+| Thresholds (ספים בשימוש)               | The limits the cleaning used: minimum price, size range, outlier ratios, new-build age                                                                                           | —                                                         |
 
 ### Why it exists
 
