@@ -25,13 +25,13 @@
 
 ## 2. Architecture (15 min)
 
-> **Key sentence:** the model only translates a question into JSON. It never sees a deal and never writes a number or a sentence of the answer.
+> **Key sentence:** the model only translates a question into JSON. It never gets deal data and never writes a number or a sentence of the answer.
 
 ### System overview
 
 ```mermaid
 flowchart LR
-  subgraph BUILD["Build time (npm run build)"]
+  subgraph BUILD["Build time (npm run build) - deterministic process"]
     CSV[data/deals.csv] --> CLEAN["clean.ts<br/>normalize, dedupe,<br/>flag, quarantine"]
     LOC[data/localities.json<br/>official CBS list] --> CLEAN
     CLEAN --> DJ[deals.json]
@@ -113,7 +113,17 @@ flowchart TD
   - Query cache (`lib/ask.ts`): in-memory LRU, 1,000 entries, question → query. Only model readings the rule parser didn't dispute are cached.
   - Answers are not cached: the engine is fast and cached answers go stale.
   - Cleaned data is built once at build time; vocabulary and prompt once per server instance.
-- **Numbers:** ~$0.00007 per question, ~$21/month.
+- **Numbers:** ~$0.00007 per question, ~$21/month. Per question, cache warm (Haiku 5.5 prices per million tokens):
+
+| Part                               | Tokens | × Price   | Cost           |
+| ---------------------------------- | ------ | --------- | -------------- |
+| System prompt, read from the cache | 4,111  | $0.01 / M | $0.0000411     |
+| The question (uncached, Hebrew)    | ~26    | $0.10 / M | $0.0000026     |
+| The model's reply (the JSON query) | ~53    | $0.50 / M | $0.0000265     |
+| **Total**                          |        |           | **≈ $0.00007** |
+
+× 300,000 questions a month ≈ $21. Token counts come from Anthropic's tokenizer, so Hebrew is included: it takes ~1.7× more tokens per character than English. Without the prompt cache, writing the prompt every time costs ~$0.00054 per question, ~$160/month.
+
 - **At 10×:** shrink the prompt (check neighborhoods in code), Redis rate limit / daily cap / circuit breaker, grow presets from repeated questions, move the cache to Redis only if repeats prove common.
 - **High load or an attack (future improvement):**
   - **Per-IP rate limiter:** detects one client sending too many requests (an attack or a bot) and answers it with 429 + `Retry-After`, so it can't use up the model quota everyone shares.
@@ -121,8 +131,7 @@ flowchart TD
 
 ### Not inventing facts, and showing what is grounded
 
-- The model writes no text that reaches the screen.
-- Closed schema: city must be an official locality (~1,300); other fields are closed lists; an unknown neighborhood is a failure.
+- Closed schema: city must be from csv; other fields are closed lists; an unknown neighborhood is a failure.
 - **Widening:** when a question matches fewer than 4 usable deals (`MIN_N`), the engine relaxes the room count by ±0.5 and tries again (`lib/engine.ts`, lines 60–77). It always tells the user it did.
 - No statistic below `MIN_N = 4`: if widening is not possible - deals are shown without a median.
 - Median, not average; outliers pending review are excluded and counted.
@@ -131,61 +140,38 @@ flowchart TD
 
 ### Rebuild first
 
-**Postgres instead of the CSV and in-memory data.** Today every data change is a file edit and a redeploy, and a flagged deal can't be approved. `Query` stays the contract; only the engine translates it to SQL. Parsers, model boundary and UI stay the same.
+**Postgres instead of the CSV and in-memory data.** This will allow a real world system that can be updated with new deals, allow admins to manage quarantined items and make other types of changes, etc. In addition - it will support much larger sizes of data (number of deals) and it will greatly reduce memory foorprint - which can be a problem with Vercel.
 
 ### Working with Claude Code: where I corrected it
 
 - **City list.** Claude Code suggested a hand-written list of cities to validate against during the build, but it wasn't complete: it was taken from the CSV itself. That made me realize the system must support future CSVs with other towns, so I added all of Israel's localities from the official government (CBS) list, with Hebrew and English names, and asked Claude to use it. The list hardly changes, so it is committed as a file.
 - **Slow or failing model.** Claude Code's plan was to go straight to the keyword parser when the model fails or is slow. I asked for retries instead, within the same 4-second total deadline (up to 2 SDK retries).
 - **Price conflicts.** Claude Code handled conflicts between different sources (using hierarchy), but didn't ask about conflicts within the same source. I added that case: the deal is kept, both prices are shown with a badge, and it is left out of price statistics.
-- **Questions about the database.** I dropped question type 8 from Claude's proposal (like which cities / how many deals do you have). They would expose the dataset's size and coverage I don't want users asking questions about the database itself, only about deals.
+- **Questions about the database.** I dropped question type 8 from Claude's proposal (how many deals do you have). They would expose the dataset's size and coverage I don't want users asking questions about the database itself, only about deals.
 
 ---
 
 ## 3. "Teach it": Claude is not an oracle (10 min)
 
-**Topic:** how to build a project reliably with an AI coding assistant. The assistant writes code fast; your job is to build the checks that catch it when it's wrong. Every technique below is a mechanism in this repo from real case
+**Topic:** how to build a project reliably with an AI coding assistant. The assistant writes code fast; your job is to build the checks that catch it when it's wrong. I give real cases that i had in this project
 
-1. **Don't trust its claims: add tests and measure.**
-
-- Mechanism: 95+ unit tests with real Hebrew questions against the real model.
-
+1. **Don't trust its claims: add tests.**
+   - Mechanism: 95+ unit tests with real Hebrew questions against the real model.
 2. **Make tests the gate, not its word.**
-
-- Mechanism: `prebuild` runs the tests, and a failing test stops the deploy, so the live site stays up.
-- "It works" from the assistant means nothing until the tests say so.
-
+   - "It works" from the assistant means nothing until the tests say so.
+   - Mechanism: `prebuild` runs the tests, and a failing test stops the deploy, so the live site stays up.
 3. **Write decisions down: it forgets.**
-
-- Mechanism: `DECISIONS.md` (what and why) plus a one-line comment in the code where a rule lives.
-- Case: widening once turned a Neve Tzedek question into a Tel Aviv median. The fixed rule is written in DECISIONS.md and in a comment on `WIDENING`, so a later session doesn't undo it.
-
+   - Mechanism: `DECISIONS.md` (what and why) plus a one-line comment in the code where a rule lives.
+   - Case: widening once turned a Neve Tzedek question into a Tel Aviv median.
 4. **Check its assumptions against reality: run it yourself and read the code.**
-
-- Case: the city list was taken from the sample CSV, so a new CSV with another town would break.
-- Ask: "what does this depend on?", "how do I see it working?".
-
+   - Case: the city list was taken from the sample CSV, so a new CSV with another town would break.
 5. **Push back on over-engineering.**
+   - Case: it proposed Upstash Redis for a query cache with a hit rate nobody had measured: a new service and paid calls on every request. An in-memory LRU of 1,000 entries was enough.
+   - Need to ask - "what does it actually give us? is it really necessary"
+   - Also used the ponytail plugin, which asks the LLM to think like a senior developer - and try to simplify code and architecture as much as possible. This saves complexity and tokens.
+6. **Its output is untrusted input:** validate it (zod, with data lists).
+7. **Sometimes less can be more**
+   - Case: it suggested having the LLM write the answers. The added value is small (nicer wording) and the costs are real: extra latency, a chance of wrong numbers or mistakes, and one more failure point.
+   - Decision: the LLM only parses the question; code computes every number and Hebrew templates word it.
 
-- Case: it proposed Upstash Redis for a query cache with a hit rate nobody had measured: a new service and paid calls on every request. An in-memory LRU of 1,000 entries was enough.
-- "what does it actually give us?"
-
-6. Its output is untrusted input: validate it (zod, official lists)
-7. **Question whether the LLM adds enough value.**
-
-- Case: it suggested having the LLM write the answers. The added value is small (nicer wording) and the costs are real: extra latency, a chance of wrong numbers or mistakes, and one more failure point.
-- Decision: the LLM only parses the question; code computes every number and Hebrew templates word it.
-
-## **Exercise:** "Claude says the cache is working. How do you check?" Expected: don't ask it; look at the response (`llm.cached`), or measure.
-
-## 4. Q&A preparation
-
-- **Missing information:**
-  - A price check with no place becomes a budget question by city.
-  - A real place with no deals gets "no data".
-  - An unknown value never matches a filter.
-  - Relative dates count from the latest data month, not today.
-- **Decisions the AI made for me:** have one example of a correction ready, e.g. widening never touches a neighborhood the user named (comment on `WIDENING`).
-- **Data cleaning** (`lib/clean.ts`): deterministic, no LLM. Every issue is fixed, flagged or quarantined, and always logged. Thresholds in `THRESHOLDS`.
-- **/admin security:** scrypt hash and an HMAC-signed cookie (`lib/admin-auth.ts`).
-- **Missing today:** rate limit, daily cap, circuit breaker, automated UI tests.
+**Exercise:** "Claude says the cache is working. How do you check?" Expected: don't ask it; look at the response (`llm.cached`) and measure.

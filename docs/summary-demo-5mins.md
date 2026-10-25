@@ -3,7 +3,7 @@
 ## The exercise
 
 - Build a system that receives a CSV of real-estate deals. The data is messy, probably on purpose, and not normalized, and the system has to deal with that.
-- The requirements were very open-ended: use an LLM, but stay predictable and deterministic, and **never invent data that doesn't exist**.
+- The requirements were very open-ended: use an LLM on one hand, but on other hand the answers should stay predictable and deterministic, and **never invent data that doesn't exist**.
 
 ## Who it's for
 
