@@ -27,7 +27,7 @@
 
 ## Free-form Hebrew
 
-- Handles everyday variations: a city spelled differently or shortened, or with a dash or underscore. תל אביב יפו (ת"א): all of these work.
+- Handles everyday variations: a city spelled differently or shortened, or with a dash or underscore. תל אביב יפו (ת"א): supports all options.
 
 ## The model never invents data
 

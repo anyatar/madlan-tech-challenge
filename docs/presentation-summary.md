@@ -11,10 +11,10 @@
 
 1. "כמה עולה דירת 4 חדרים בכפר סבא?": an example question, shows the median - not effected by outliars.
 2. "3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?": the price's percentile among comparable deals.
-3. "יש לי 3 מיליון, מה אפשר לקנות?": a budget question. Deals priced at 80–100% of the budget, grouped by city, with count, rooms and size.
-4. "איפה הכי זול לקנות 3 חדרים?": a ranking question. Takes the 3-room deals, groups them by city, and ranks the cities by median price per m², cheapest first.
-5. "רמת גן מול גבעתיים": a compare question. Two sides, each with its own median price per m², n and date range.
-6. "איך השתנו המחירים בחולון מאז 2022?": a trend question. Holon deals from 2022 on, grouped by year, with the median price per m² for each year.
+3. "יש לי 3 מיליון, מה אפשר לקנות?": **a budget question**. Deals priced at 80–100% of the budget, grouped by city, with count, rooms and size.
+4. "איפה הכי זול לקנות 3 חדרים?": **a ranking question**. Takes the 3-room deals, groups them by city, and ranks the cities by median price per m², cheapest first.
+5. "רמת גן מול גבעתיים": **a compare question**. Two sides, each with its own median price per m², n and date range.
+6. "איך השתנו המחירים בחולון מאז 2022?": **a trend question**. Holon deals from 2022 on, grouped by year, with the median price per m² for each year.
 7. A question typed in free wording (e.g. ת"א, "בשנה האחרונה"): this one goes through the model.
 8. "כמה יעלו המחירים בשנה הבאה?": declined, with the reason in Hebrew.
 9. "דירות באילת": "אין במאגר עסקאות באילת", not a country-wide answer.
@@ -156,27 +156,26 @@ To use Redis to cache popular quiries, optimize indexes, tune pagination
 
 ## 3. "Teach it": Claude is not an oracle (10 min)
 
-**Topic:** how to build a project reliably with an AI coding assistant. The assistant writes code fast; your job is to build the checks that catch it when it's wrong. I give real cases that i had in this project
+**Topic:** The assistant writes code fast; your job is to build the checks that catch it when it's wrong. I give real cases that i had in this project
 
-1. **Don't trust its claims: add tests.**
-   - Mechanism: 95+ unit tests with real Hebrew questions against the real model.
-2. **Make tests the gate, not its word.**
+1. **Make tests the gate, not its word.**
    - "It works" from the assistant means nothing until the tests say so.
+   - Unit tests (95+) use a fake model; `npm run eval-llm` runs 31 real Hebrew questions against the real model.
    - Mechanism: `prebuild` runs the tests, and a failing test stops the deploy, so the live site stays up.
-3. **Write decisions down: it forgets.**
+2. **Write decisions down: it forgets.**
    - Mechanism: `DECISIONS.md` (what and why) plus a one-line comment in the code where a rule lives.
    - Case: widening once turned a Neve Tzedek question into a Tel Aviv median.
-4. **Check its assumptions against reality: run it yourself and read the code.**
+3. **Check its assumptions against reality: run it yourself and read the code, debug it.**
    - Case: the city list was taken from the sample CSV, so a new CSV with another town would break.
-5. **Push back on over-engineering.**
+4. **Push back on over-engineering.**
    - Case: it proposed Upstash Redis for a query cache with a hit rate nobody had measured: a new service and paid calls on every request. An in-memory LRU of 1,000 entries was enough.
    - Need to ask - "what does it actually give us? is it really necessary"
    - Also used the ponytail plugin, which asks the LLM to think like a senior developer - and try to simplify code and architecture as much as possible. This saves complexity and tokens.
-6. **Its output is untrusted input:** validate it (zod, with data lists).
-7. **Sometimes less can be more**
+5. **Its output is untrusted input:** validate it (zod, with data lists).
+6. **Sometimes less can be more**
    - Case: it suggested having the LLM write the answers. The added value is small (nicer wording) and the costs are real: extra latency, a chance of wrong numbers or mistakes, and one more failure point.
    - Decision: the LLM only parses the question; code computes every number and Hebrew templates word it.
-8. **Get a second opinion: review by a separate session or agent.**
+7. **Get a second opinion: review by a separate session or agent.**
    - A fresh session doesn't share the author's assumptions, so it catches what the author missed: security issues, dead code, over-engineering.
 
 **Exercise:** "Claude says the cache is working. How do you check?" Expected: don't ask it; look at the response (`llm.cached`) and measure.
