@@ -141,6 +141,9 @@ flowchart TD
 ### Rebuild first
 
 **Postgres instead of the CSV and in-memory data.** This will allow a real world system that can be updated with new deals, allow admins to manage quarantined items and make other types of changes, etc. In addition - it will support much larger sizes of data (number of deals) and it will greatly reduce memory foorprint - which can be a problem with Vercel.
+To use Redis to cache popular quiries, optimize indexes, tune pagination
+
+**Browser tests (Playwright).** The UI is checked by hand today; unit tests prove the logic, a browser test proves what the user actually sees.
 
 ### Working with Claude Code: where I corrected it
 
@@ -173,5 +176,7 @@ flowchart TD
 7. **Sometimes less can be more**
    - Case: it suggested having the LLM write the answers. The added value is small (nicer wording) and the costs are real: extra latency, a chance of wrong numbers or mistakes, and one more failure point.
    - Decision: the LLM only parses the question; code computes every number and Hebrew templates word it.
+8. **Get a second opinion: review by a separate session or agent.**
+   - A fresh session doesn't share the author's assumptions, so it catches what the author missed: security issues, dead code, over-engineering.
 
 **Exercise:** "Claude says the cache is working. How do you check?" Expected: don't ask it; look at the response (`llm.cached`) and measure.
