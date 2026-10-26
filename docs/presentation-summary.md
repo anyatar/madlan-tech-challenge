@@ -2,23 +2,23 @@
 
 **What and why:**
 
-- **The exercise:** build a system that takes a CSV of deals, normalizes and validates it, and lets a user ask questions in free-form language and get quick answers.
+- **The exercise:** build a system that receives a CSV of real estate deals, normalizes and validates it, uses LLM and lets a user ask questions in free-form language and get quick determenistic answers.
 - **The result:** a Hebrew, right-to-left app. The user asks a question in his own words and gets an answer computed only from real closed deals.
-- **Persona:** a potential real-estate buyer. Someone decides on millions based on the answer, so mistakes do the most damage there.
-- **Can fir also for** sellers and real-estate agents (first two questions).
+- **Persona:** intended to potential real-estate buyers can be useful also to sellers and real-estate agents (first two questions). Ask several types questions in free-form Hebrew about deals
+- **Real data** The system never invent data, the actual analysis and response generation is not done by model
 
 **Demo order:**
 
 1. "כמה עולה דירת 4 חדרים בכפר סבא?": an example question, shows the median - not effected by outliars.
-2. "3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?": the price's percentile among comparable deals.
+2. "3.2 מיליון ל-4 חדרים בכפר סבא, זה סביר?": tells where 3.2 fits in the data, how many % below this price.
 3. "יש לי 3 מיליון, מה אפשר לקנות?": **a budget question**. Deals priced at 80–100% of the budget, grouped by city, with count, rooms and size.
 4. "איפה הכי זול לקנות 3 חדרים?": **a ranking question**. Takes the 3-room deals, groups them by city, and ranks the cities by median price per m², cheapest first.
 5. "רמת גן מול גבעתיים": **a compare question**. Two sides, each with its own median price per m², n and date range.
 6. "איך השתנו המחירים בחולון מאז 2022?": **a trend question**. Holon deals from 2022 on, grouped by year, with the median price per m² for each year.
-7. A question typed in free wording (e.g. ת"א, "בשנה האחרונה"): this one goes through the model.
-8. "כמה יעלו המחירים בשנה הבאה?": declined, with the reason in Hebrew.
-9. "דירות באילת": "אין במאגר עסקאות באילת", not a country-wide answer.
-10. `/admin`, briefly: quarantine, outliers, fixes.
+7. A question typed in free wording (e.g. ת"א, "בשנה האחרונה"): this one goes through the model - options are supported.
+8. "כמה יעלו המחירים בשנה הבאה?": predictions: declined, with the reason in Hebrew.
+9. "דירות באילת": "אין במאגר עסקאות באילת", no data.
+10. `/admin`, basic - shows bad lines: quarantine, outliers, settings, fixes in future.
 11. General rule for all answers: no median is calculated from fewer than 4 deals (`MIN_N`); the deals themselves are shown instead - not enough data. one unusual sale moves the result a lot.
 
 ---
@@ -132,7 +132,7 @@ flowchart TD
 ### Not inventing facts, and showing what is grounded
 
 - Closed schema: city must be from csv; other fields are closed lists; an unknown neighborhood is a failure.
-- **Widening:** when a question matches fewer than 4 usable deals (`MIN_N`), the engine relaxes the room count by ±0.5 and tries again (`lib/engine.ts`, lines 60–77). It always tells the user it did.
+- **Widening:** when a question matches fewer than 4 usable deals (`MIN_N`), the engine tries expand the room count by ±0.5 and tries again (`lib/engine.ts`, lines 60–77) if successed - shows the median. It tells the user it did.
 - No statistic below `MIN_N = 4`: if widening is not possible - deals are shown without a median.
 - Median, not average; outliers pending review are excluded and counted.
 - An unknown value never matches a filter (unknown parking ≠ "with parking").
